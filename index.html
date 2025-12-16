@@ -13,12 +13,32 @@
 
     <!-- 【核心設定】PDF.js v5.4.449 : 讀取本地 pdf-dist 資料夾 -->
     <script type="module">
+        // 【安全機制】本機執行檢測與鎖定
+        if (window.location.protocol === 'file:') {
+            document.documentElement.innerHTML = `
+                <body style="background:#000; color:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; margin:0; font-family:sans-serif;">
+                    <h1 style="color:yellow; font-size:2.5rem; text-align:center;">⚠️ 環境錯誤</h1>
+                    <p style="font-size:1.5rem; text-align:center; max-width:800px; line-height:1.6;">
+                        為了確保功能正常，本程式<strong>不支援</strong>在本機 (Local) 直接開啟。<br><br>
+                        請將此專案上傳至 <strong>GitHub</strong>，並透過 GitHub Pages 或線上網址開啟使用。
+                    </p>
+                </body>
+            `;
+            throw new Error("Local execution blocked. Please run on a server.");
+        }
+
         // 設定本地路徑 (基於 GitHub Desktop 上傳結構)
         const PDF_BASE = './pdf-dist/pdf.mjs';
         const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
         async function initPdfSystem() {
             try {
+                // 【安全機制】檢測 PDF 檔案結構
+                const response = await fetch(PDF_BASE, { method: 'HEAD' });
+                if (!response.ok) {
+                    throw new Error(`找不到核心檔案 (Status: ${response.status}) - 請確認 GitHub 專案中是否有 pdf-dist 資料夾`);
+                }
+
                 // 1. 載入主程式庫
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
@@ -26,12 +46,18 @@
                 // 2. 設定 Worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
                 
-                console.log("PDF System Initialized (Local Mode with Semantic Engine)");
+                console.log("PDF System Initialized (Global Script Support)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
 
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗 (請確認 pdf-dist 資料夾正確)", e);
+                window.reportError("PDF 核心載入失敗！\n請檢查您的 GitHub 儲存庫根目錄下，是否已正確包含 'pdf-dist' 資料夾。", e);
+                const btn = document.getElementById('pdf-start-btn');
+                if (btn) {
+                    btn.innerText = "⚠️ 錯誤：找不到 pdf-dist 資料夾";
+                    btn.classList.add('danger');
+                    btn.disabled = true;
+                }
             }
         }
         initPdfSystem();
@@ -55,7 +81,8 @@
         }
 
         body {
-            font-family: system-ui, -apple-system, sans-serif;
+            /* 修正 3：排版渲染引擎最佳化 - 字型退路 */
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
@@ -195,7 +222,16 @@
         .message.error { border-left-color: #ff0000; background: #330000; }
         .message.error h1.msg-heading { color: #ff5555; }
 
-        .markdown-body { line-height: 1.7; overflow-wrap: break-word; }
+        /* 修正 3：排版渲染引擎最佳化 - RTL 與斷字 */
+        .markdown-body { 
+            line-height: 1.7; 
+            overflow-wrap: break-word; 
+            word-break: break-word;
+            unicode-bidi: isolate; /* 確保混合語文方向隔離 */
+        }
+        /* 針對 RTL 語系自動調整方向 */
+        .markdown-body[dir="auto"] { text-align: start; }
+
         .markdown-body h1, .markdown-body h2 { color: #88CCFF; border-bottom: none; margin-top: 1.5em; }
         .markdown-body p { margin-bottom: 10px; white-space: pre-wrap; } 
         .markdown-body pre { 
@@ -462,22 +498,56 @@
 </footer>
 
 <script>
-    // --- 【核心引擎 1】全能文字重組引擎 (Universal Text Normalizer) ---
-    // 負責對所有文字來源進行「語義感知」的後處理，清除多餘空格，修復格式
+    // --- 【修正 1 & 2】全球語言文字庫 & 智能黏合矩陣 ---
+    // 升級版 UniversalTextNormalizer：處理 CJK/SEA/RTL/Latin 等複雜混合語境
     class UniversalTextNormalizer {
-        // 判斷是否為緊湊型語言 (CJK + 泰文 + 寮文 + 高棉文 + 緬甸文)
-        static isCompactLang(char) {
-            return /[\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF\u0E00-\u0E7F\u0E80-\u0EFF\u1780-\u17FF\u1000-\u109F]/.test(char);
+        
+        // 判定字符所屬的語系腳本 (Script)
+        static getScriptType(char) {
+            if (!char) return 'other';
+            const code = char.charCodeAt(0);
+            
+            // 1. CJK 緊湊語言 (Compact - 無空格)
+            // 包含：漢字(Unified)、平假名、片假名、韓文(Hangul)
+            if ((code >= 0x4E00 && code <= 0x9FFF) || 
+                (code >= 0x3040 && code <= 0x309F) || 
+                (code >= 0x30A0 && code <= 0x30FF) || 
+                (code >= 0xAC00 && code <= 0xD7AF) ||
+                (code >= 0x3400 && code <= 0x4DBF)) // CJK Ext A
+                return 'cjk';
+
+            // 2. 東南亞連寫語言 (SEA - 無空格，需強制黏合)
+            // 包含：泰文、寮文、高棉文、緬甸文
+            if ((code >= 0x0E00 && code <= 0x0E7F) || // Thai
+                (code >= 0x0E80 && code <= 0x0EFF) || // Lao
+                (code >= 0x1780 && code <= 0x17FF) || // Khmer
+                (code >= 0x1000 && code <= 0x109F))   // Myanmar
+                return 'sea';
+
+            // 3. 右至左語言 (RTL)
+            // 包含：阿拉伯文、烏爾都文、希伯來文
+            if ((code >= 0x0600 && code <= 0x06FF) || // Arabic/Urdu
+                (code >= 0x0750 && code <= 0x077F) || // Arabic Sup
+                (code >= 0x0590 && code <= 0x05FF))   // Hebrew
+                return 'rtl';
+
+            // 4. 拉丁/西里爾/希臘/數字 (Space-based)
+            // 包含：英文、法文、俄文、德文、西班牙文、數字
+            if ((code >= 0x0041 && code <= 0x005A) || // A-Z
+                (code >= 0x0061 && code <= 0x007A) || // a-z
+                (code >= 0x0030 && code <= 0x0039) || // 0-9
+                (code >= 0x00C0 && code <= 0x024F) || // Latin Ext
+                (code >= 0x0400 && code <= 0x04FF) || // Cyrillic (Russian)
+                (code >= 0x0370 && code <= 0x03FF))   // Greek
+                return 'latin';
+
+            return 'other'; // 標點符號、印度文(Devanagari)等其他
         }
 
-        // 判斷是否為前置型符號 (如 $ ( [ )
-        static isPrefixSymbol(char) {
-            return /[$¥€£([{'"]/.test(char);
-        }
-        
-        // 判斷是否為後置型符號 (如 % ) ] } . ,)
-        static isSuffixSymbol(char) {
-            return /[%\])}.,:;?!]/.test(char);
+        // 判斷是否為緊湊型語言 (用於相容舊代碼)
+        static isCompactLang(char) {
+            const type = this.getScriptType(char);
+            return type === 'cjk' || type === 'sea';
         }
 
         static normalize(text) {
@@ -490,14 +560,12 @@
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
             // 3. 段落重組 (Paragraph Reconstruction)
-            // 核心目標：解決 CJK 軟換行造成的斷裂 (比\n例 -> 比例)
             const lines = res.split("\n");
             let processed = "";
             
             for (let i = 0; i < lines.length; i++) {
                 let curr = lines[i].trim();
                 
-                // 保留空行作為段落分隔
                 if (curr.length === 0) {
                     processed += "\n\n"; 
                     continue;
@@ -506,23 +574,30 @@
                 if (i < lines.length - 1) {
                     let next = lines[i + 1].trim();
                     if (next.length === 0) {
-                        processed += curr + "\n"; // 下一行是段落分隔，保留此行
+                        processed += curr + "\n";
                         continue;
                     }
                     
                     let lastChar = curr.slice(-1);
                     let nextChar = next.charAt(0);
                     
-                    // 黏合邏輯：
-                    // A. 如果兩邊都是 CJK/CompactLang -> 無縫黏合
-                    if (this.isCompactLang(lastChar) && this.isCompactLang(nextChar)) {
-                        processed += curr; // 不加換行也不加空格
+                    const typeA = this.getScriptType(lastChar);
+                    const typeB = this.getScriptType(nextChar);
+
+                    // 智能黏合矩陣 (跨行版)
+                    // 規則：如果是 CJK/SEA 或 CJK+Latin 混合，去除跨行空格
+                    if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) {
+                        processed += curr; 
                     } 
-                    // B. 如果是列表符號 -> 保留換行
+                    // 針對用戶要求：CJK 與 英文/數字 之間，跨行時也不加空格
+                    else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
+                         processed += curr;
+                    }
+                    // 列表符號 -> 保留換行
                     else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) {
                         processed += curr + "\n";
                     }
-                    // C. 歐語系或其他 -> 加空格黏合 (軟換行)
+                    // 歐語/RTL/印度語 -> 加空格
                     else {
                         processed += curr + " ";
                     }
@@ -531,10 +606,18 @@
                 }
             }
 
-            // 4. 強力正規化清理 (Regex Cleaning)
-            // 修復 OCR 或提取過程中漏網的 "人 造" (CJK + space + CJK)
-            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af\u0e00-\u0e7f])\s+([\u2e80-\u9fff\uac00-\ud7af\u0e00-\u0e7f])/g, "$1$2");
+            // 4. 強力正規化清理 (Regex Cleaning) - 針對單行內的破碎修復
             
+            // 修復 CJK 內部空格 "中 文" -> "中文"
+            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af])\s+([\u2e80-\u9fff\uac00-\ud7af])/g, "$1$2");
+            
+            // 修復 泰文/寮文/高棉文 內部空格 (SEA 強制黏合)
+            processed = processed.replace(/([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])\s+([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])/g, "$1$2");
+
+            // 修復 CJK 與 英文/數字 之間的空格 (依用戶要求移除) "檔案 PDF 1" -> "檔案PDF1"
+            processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
+            processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
+
             // 修復貨幣與數字 "$ 1,632" -> "$1,632"
             processed = processed.replace(/([$¥€£])\s+(\d)/g, "$1$2");
             
@@ -545,7 +628,6 @@
             // 修復標點前的多餘空格 "Word ." -> "Word."
             processed = processed.replace(/\s+([,.:;?!])/g, "$1");
 
-            // 最終清理：確保沒有超過3個換行
             return processed.replace(/\n{3,}/g, "\n\n").trim();
         }
     }
@@ -576,8 +658,10 @@
 
     window.addEventListener('pdfjs-loaded', () => {
         const btn = document.getElementById('pdf-start-btn');
-        btn.innerText = "📄 PDF 完整閱讀 (本地核心就緒)";
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = "📄 PDF 完整閱讀 (本地核心就緒)";
+            btn.disabled = false;
+        }
         showReadyStatus();
     });
 
@@ -866,15 +950,15 @@ Translate the input text fully and fluently. Fix broken lines.`;
             let sourceMode = "text";
 
             if (!alwaysAI) {
-                // 使用改進的幾何提取
-                const localText = await extractTextFromPDF_Geometric(file);
+                // 使用改進的「Advanced Layout Engine」
+                const localText = await extractTextFromPDF_Accurate(file);
                 
                 const cleanText = localText ? localText.replace(/\s/g, '') : "";
                 if (cleanText.length > 50 && !/[\uFFFD]/.test(cleanText.slice(0, 100))) {
                     // **關鍵步驟**：提取後立刻進行語義正規化
                     extractedText = UniversalTextNormalizer.normalize(localText);
                     sourceMode = "text";
-                    updateStatusBar("文字提取成功，準備處理...", "busy");
+                    updateStatusBar("文字提取成功 (XY-Cut Mode)，準備處理...", "busy");
                 } else {
                     sourceMode = "image";
                 }
@@ -982,9 +1066,8 @@ Translate the input text fully and fluently. Fix broken lines.`;
         else { el.classList.remove('active'); el.innerText = ""; }
     }
 
-    // --- 【核心引擎 2】幾何座標文字提取器 (Geometric Text Extractor) ---
-    // 改進版：引入語義黏合邏輯，防止 "人 造" 或 "$ 1"
-    async function extractTextFromPDF_Geometric(file) {
+    // --- 【核心引擎 2 (升級版)】 Advanced PDF Text Engine (XY-Cut & Adaptive) ---
+    async function extractTextFromPDF_Accurate(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
             const loadingTask = window.pdfjsLib.getDocument({
@@ -992,91 +1075,170 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 cMapUrl: './pdf-dist/cmaps/',
                 cMapPacked: true,
                 standardFontDataUrl: './pdf-dist/standard_fonts/',
-                disableCombineTextItems: false 
+                disableCombineTextItems: false // 保持原始碎片，便於精確分析
             });
             const pdf = await loadingTask.promise;
             let fullText = "";
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                const items = content.items;
                 
+                // --- 策略 1: 嘗試 Tagged PDF (Gold Standard) ---
+                let structText = null;
+                try {
+                    const structTree = await page.getStructTree();
+                    if (structTree) {
+                        console.log(`Page ${i} has StructTree (Tagged PDF detected). Using Layout Analysis for precision.`);
+                    }
+                } catch(e) { /* No struct tree, ignore */ }
+
+                // --- 策略 2: Advanced Layout Analysis (XY-Cut) ---
+                const content = await page.getTextContent({ includeMarkedContent: true });
+                const items = content.items.filter(item => item.str && item.str.trim().length > 0);
+
                 if (items.length === 0) {
                     fullText += `## [Page ${i}]\n\n`;
                     continue;
                 }
 
-                let pageStr = "";
-                let lastY = -1;
-                let lastX = -1;
-                let lastWidth = 0;
-                let lastStr = "";
-
-                for (let item of items) {
-                    const str = item.str;
-                    if (!str) continue;
-
+                // A. 預處理：計算平均字寬與正規化座標
+                const viewport = page.getViewport({ scale: 1.0 });
+                const normalizedItems = items.map(item => {
                     const tx = item.transform;
-                    const x = tx[4];
-                    const y = tx[5];
-                    const h = item.height || 10; 
-                    const w = item.width;
+                    return {
+                        str: item.str,
+                        x: tx[4],
+                        y: viewport.height - tx[5], // Flip Y
+                        w: item.width,
+                        h: item.height || 10,
+                        hasEOL: item.hasEOL,
+                        fontHeight: Math.abs(tx[3]) // 字體實際高度
+                    };
+                });
 
-                    // 1. 換行檢測
-                    if (lastY !== -1 && Math.abs(y - lastY) > h * 0.5) {
-                        pageStr += "\n";
-                        lastX = -1; 
-                    } 
-                    // 2. 語義感知黏合 (Semantic Aware Gluing)
-                    else if (lastX !== -1) {
-                        const expectedStart = lastX + lastWidth;
-                        const gap = x - expectedStart;
-                        
-                        // 獲取前後字元進行類型判斷
-                        const prevChar = lastStr.slice(-1);
-                        const currChar = str.charAt(0);
-                        
-                        let shouldAddSpace = false;
+                // B. 執行 XY-Cut 分欄檢測
+                const columns = detectColumns(normalizedItems, viewport.width);
+                let pageStr = "";
+                
+                // C. 針對每一欄進行行排序與組裝
+                for (const columnItems of columns) {
+                    columnItems.sort((a, b) => {
+                        const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
+                        if (Math.abs(a.y - b.y) < rowTolerance) {
+                            return a.x - b.x; // 同一行，按 X 排序
+                        }
+                        return a.y - b.y; // 不同行，按 Y 排序
+                    });
 
-                        // **黏合規則 A**: 如果兩邊都是緊湊語言 (CJK)，強制不加空格
-                        // 這是解決 "保  暖" 的核心：忽略任何幾何間距
-                        if (UniversalTextNormalizer.isCompactLang(prevChar) && UniversalTextNormalizer.isCompactLang(currChar)) {
-                            shouldAddSpace = false;
-                        }
-                        // **黏合規則 B**: 前面是貨幣/左括號等前置符號，後面是數字/文字 -> 不加空格
-                        else if (UniversalTextNormalizer.isPrefixSymbol(prevChar)) {
-                            shouldAddSpace = false;
-                        }
-                        // **黏合規則 C**: 後面是標點/右括號 -> 不加空格
-                        else if (UniversalTextNormalizer.isSuffixSymbol(currChar)) {
-                            shouldAddSpace = false;
-                        }
-                        // **規則 D**: 其他情況 (如英文)，依賴幾何距離
-                        else {
-                            if (gap > h * 0.15) { 
-                                shouldAddSpace = true;
-                            }
-                        }
-
-                        if (shouldAddSpace && str.trim().length > 0 && lastStr.trim().length > 0) {
-                            pageStr += " ";
-                        }
-                    }
-
-                    pageStr += str;
-                    lastX = x;
-                    lastY = y;
-                    lastWidth = w;
-                    lastStr = str;
+                    // 使用升級版的智能黏合邏輯
+                    pageStr += assembleLinesAdaptive(columnItems) + "\n";
                 }
+
                 fullText += `## [Page ${i}]\n${pageStr}\n\n`;
             }
             return fullText;
         } catch (e) {
-            console.error("Geometric extract failed", e);
+            console.error("Advanced extract failed", e);
             return null;
         }
+    }
+
+    // --- 輔助算法：XY-Cut 分欄偵測 ---
+    function detectColumns(items, pageWidth) {
+        // 簡單版 XY-Cut：尋找頁面中央是否存在顯著的垂直空白帶
+        const bucketSize = 2;
+        const bins = new Array(Math.ceil(pageWidth / bucketSize)).fill(0);
+        
+        items.forEach(item => {
+            const startBin = Math.floor(item.x / bucketSize);
+            const endBin = Math.floor((item.x + item.w) / bucketSize);
+            for(let k = startBin; k <= endBin; k++) {
+                if(k >= 0 && k < bins.length) bins[k] = 1; // 標記為有內容
+            }
+        });
+
+        // 搜尋範圍：頁面中間 20% ~ 80%
+        const searchStart = Math.floor(bins.length * 0.2);
+        const searchEnd = Math.floor(bins.length * 0.8);
+        
+        let gaps = [];
+        let currentGap = { start: -1, width: 0 };
+        
+        for (let i = searchStart; i < searchEnd; i++) {
+            if (bins[i] === 0) {
+                if (currentGap.start === -1) currentGap.start = i;
+                currentGap.width++;
+            } else {
+                if (currentGap.width > 0) {
+                    gaps.push({ ...currentGap });
+                    currentGap = { start: -1, width: 0 };
+                }
+            }
+        }
+
+        const splitThreshold = bins.length * 0.02;
+        const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
+
+        if (validGap.width > splitThreshold) {
+            const splitX = (validGap.start + validGap.width / 2) * bucketSize;
+            const leftCol = items.filter(it => it.x + it.w < splitX);
+            const rightCol = items.filter(it => it.x >= splitX);
+            return [leftCol, rightCol];
+        }
+
+        return [items];
+    }
+
+    // --- 【修正 2】升級版輔助算法：適應性智能文字組裝 (Smart Glue Matrix) ---
+    function assembleLinesAdaptive(items) {
+        if (items.length === 0) return "";
+        
+        let result = "";
+        let lastItem = null;
+        
+        for (let item of items) {
+            if (lastItem) {
+                // 1. 換行判斷
+                const rowTolerance = Math.min(lastItem.fontHeight, item.fontHeight) * 0.5;
+                const isNewLine = (item.y - lastItem.y > rowTolerance) || lastItem.hasEOL;
+
+                if (isNewLine) {
+                    result += "\n";
+                } else {
+                    // 2. 智能黏合矩陣 (Smart Glue Matrix)
+                    const prevChar = lastItem.str.slice(-1);
+                    const currChar = item.str.charAt(0);
+                    const typeA = UniversalTextNormalizer.getScriptType(prevChar);
+                    const typeB = UniversalTextNormalizer.getScriptType(currChar);
+
+                    const gap = item.x - (lastItem.x + lastItem.w);
+                    
+                    // 規則 A: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合 (無視 gap)
+                    if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
+                        // 僅在極大間距(如 Tab)時才分開
+                        if (gap > item.fontHeight * 2) result += " "; 
+                    }
+                    // 規則 B: CJK 之間，或 CJK 與 Latin/Num 混合 -> 強制黏合 (依用戶要求無多餘空格)
+                    else if ((typeA === 'cjk' && typeB === 'cjk') || 
+                             (typeA === 'cjk' && typeB === 'latin') || 
+                             (typeA === 'latin' && typeB === 'cjk')) {
+                         // 除非間距大到像 Tab，否則黏合
+                         if (gap > item.fontHeight * 1.5) result += " ";
+                    }
+                    // 規則 C: 歐語系 (Latin/Latin) -> 依閾值判斷
+                    else {
+                        // 閾值：字體高度的 35%
+                        const spaceThreshold = item.fontHeight * 0.35;
+                        if (gap > spaceThreshold) {
+                            result += " ";
+                        }
+                    }
+                }
+            }
+            result += item.str;
+            lastItem = item;
+        }
+        return result;
     }
 
     function initVoiceSystem() {
@@ -1207,7 +1369,8 @@ Translate the input text fully and fluently. Fix broken lines.`;
     
     function addMessage(role, content) {
         const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
-        div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+        // 修正 3：加入 HTML dir="auto" 屬性確保顯示正確
+        div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
         if(role==='assistant') {
             const btn = document.createElement('button'); btn.className='mini-copy-btn'; btn.innerText='複製 (Alt+Shift+R)';
             btn.onclick = () => navigator.clipboard.writeText(div.querySelector('.markdown-body').innerText).then(()=>showTransientStatus('已複製'));
@@ -1320,8 +1483,8 @@ Translate the input text fully and fluently. Fix broken lines.`;
             let input = txt; let fileData = null; let mime = null; let skipFile = false;
             if(selectedFile) {
                 if(selectedFile.type==='application/pdf') {
-                    // 這裡改用幾何提取 + 全能重組
-                    const pdfText = await extractTextFromPDF_Geometric(selectedFile);
+                    // 使用最新的 Advanced Layout Engine (XY-Cut)
+                    const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                     if(pdfText) { 
                         // **關鍵步驟**：進入 Prompt 前確保已經正規化
                         const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
