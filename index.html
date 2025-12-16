@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 視障助理 (2025 全能排版修正版)</title>
+    <title>AI 視障助理 (2025 全能排版終極版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -279,7 +279,7 @@
 </div>
 
 <div class="container">
-    <h1 class="app-title">AI 視障助理 (2025 全能排版修正版)</h1>
+    <h1 class="app-title">AI 視障助理 (2025 全能排版終極版)</h1>
 
     <!-- 設定區 -->
     <details id="settings-area">
@@ -465,9 +465,9 @@
     // --- 【核心引擎 1】全能文字重組引擎 (Universal Text Normalizer) ---
     // 負責對所有文字來源進行「語義感知」的後處理，清除多餘空格，修復格式
     class UniversalTextNormalizer {
-        // 判斷是否為緊湊型語言 (CJK + 泰文等)
+        // 判斷是否為緊湊型語言 (CJK + 泰文 + 寮文 + 高棉文 + 緬甸文)
         static isCompactLang(char) {
-            return /[\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF\u0E00-\u0E7F]/.test(char);
+            return /[\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF\u0E00-\u0E7F\u0E80-\u0EFF\u1780-\u17FF\u1000-\u109F]/.test(char);
         }
 
         // 判斷是否為前置型符號 (如 $ ( [ )
@@ -479,11 +479,6 @@
         static isSuffixSymbol(char) {
             return /[%\])}.,:;?!]/.test(char);
         }
-        
-        // 判斷是否為數字
-        static isDigit(char) {
-            return /\d/.test(char);
-        }
 
         static normalize(text) {
             if (!text) return "";
@@ -491,17 +486,18 @@
             // 1. 統一換行符號
             let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-            // 2. 處理連字符號換行 (Hyphenation)
+            // 2. 處理連字符號換行 (Hyphenation) Ex: pro-\ncess -> process
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
             // 3. 段落重組 (Paragraph Reconstruction)
+            // 核心目標：解決 CJK 軟換行造成的斷裂 (比\n例 -> 比例)
             const lines = res.split("\n");
             let processed = "";
             
             for (let i = 0; i < lines.length; i++) {
-                // 去除行首行尾空白 (解決 "  人 造 纖 維  ")
                 let curr = lines[i].trim();
                 
+                // 保留空行作為段落分隔
                 if (curr.length === 0) {
                     processed += "\n\n"; 
                     continue;
@@ -510,22 +506,23 @@
                 if (i < lines.length - 1) {
                     let next = lines[i + 1].trim();
                     if (next.length === 0) {
-                        processed += curr + "\n"; 
+                        processed += curr + "\n"; // 下一行是段落分隔，保留此行
                         continue;
                     }
                     
                     let lastChar = curr.slice(-1);
                     let nextChar = next.charAt(0);
                     
-                    // 換行處黏合邏輯：
-                    // 如果兩邊都是緊湊語言，直接黏合
+                    // 黏合邏輯：
+                    // A. 如果兩邊都是 CJK/CompactLang -> 無縫黏合
                     if (this.isCompactLang(lastChar) && this.isCompactLang(nextChar)) {
-                        processed += curr;
+                        processed += curr; // 不加換行也不加空格
                     } 
-                    // 如果是列表符號，保留換行
+                    // B. 如果是列表符號 -> 保留換行
                     else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) {
                         processed += curr + "\n";
                     }
+                    // C. 歐語系或其他 -> 加空格黏合 (軟換行)
                     else {
                         processed += curr + " ";
                     }
@@ -548,6 +545,7 @@
             // 修復標點前的多餘空格 "Word ." -> "Word."
             processed = processed.replace(/\s+([,.:;?!])/g, "$1");
 
+            // 最終清理：確保沒有超過3個換行
             return processed.replace(/\n{3,}/g, "\n\n").trim();
         }
     }
@@ -1042,6 +1040,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                         let shouldAddSpace = false;
 
                         // **黏合規則 A**: 如果兩邊都是緊湊語言 (CJK)，強制不加空格
+                        // 這是解決 "保  暖" 的核心：忽略任何幾何間距
                         if (UniversalTextNormalizer.isCompactLang(prevChar) && UniversalTextNormalizer.isCompactLang(currChar)) {
                             shouldAddSpace = false;
                         }
@@ -1055,7 +1054,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                         }
                         // **規則 D**: 其他情況 (如英文)，依賴幾何距離
                         else {
-                            if (gap > h * 0.15) { // 降低閾值以適應緊湊排版
+                            if (gap > h * 0.15) { 
                                 shouldAddSpace = true;
                             }
                         }
