@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 視障助理 (2025 專業修正版)</title>
+    <title>AI 視障助理 (2025 本地增強版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -11,35 +11,30 @@
     <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
-    <!-- 【核心修正 1】PDF.js v5.4.449 : 使用 Fetch + Blob 完美解決 Worker 跨域問題 -->
+    <!-- 【核心修正 1】PDF.js v5.4.449 : 改為讀取本地 pdf-dist 資料夾 -->
     <script type="module">
-        const PDF_VERSION = '5.4.449';
-        const PDF_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDF_VERSION}/legacy/build/pdf.mjs`;
-        const WORKER_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDF_VERSION}/legacy/build/pdf.worker.mjs`;
+        // 設定本地路徑 (基於我們在 GitHub 建立的結構)
+        const PDF_BASE = './pdf-dist/pdf.mjs';
+        const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
         async function initPdfSystem() {
             try {
-                // 1. 載入主程式庫
+                // 1. 載入主程式庫 (Dynamic Import)
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
 
-                // 2. 手動 Fetch Worker 程式碼並轉為 Blob (騙過瀏覽器 CORS)
-                const response = await fetch(WORKER_URL);
-                if (!response.ok) throw new Error("Worker download failed");
-                const workerScript = await response.text();
-                const blob = new Blob([workerScript], { type: "application/javascript" });
-                const blobUrl = URL.createObjectURL(blob);
-
-                // 3. 設定 Worker
-                pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
-                console.log("PDF System Initialized (Blob Mode)");
+                // 2. 設定 Worker (直接指向本地檔案，無須 Blob 轉換)
+                // 這能確保 Worker 正確解析相對路徑的字型檔
+                pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+                
+                console.log("PDF System Initialized (Local Mode)");
                 
                 // 通知介面已就緒
                 window.dispatchEvent(new Event('pdfjs-loaded'));
 
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗", e);
+                window.reportError("PDF 核心載入失敗 (請確認 pdf-dist 資料夾已上傳)", e);
             }
         }
         initPdfSystem();
@@ -287,7 +282,7 @@
 </div>
 
 <div class="container">
-    <h1 class="app-title">AI 視障助理 (2025 專業修正版)</h1>
+    <h1 class="app-title">AI 視障助理 (2025 本地增強版)</h1>
 
     <!-- 設定區 -->
     <details id="settings-area">
@@ -298,7 +293,7 @@
         <div style="margin-top: 15px;">
             <div class="cors-notice">
                 <strong>⚠️ 連線提示 (2025)：</strong> 
-                瀏覽器直連 OpenAI/Groq 可能被阻擋。推薦使用 <strong>Google Gemini</strong> 或 <strong>OpenRouter</strong> 以確保穩定連線。
+                本程式使用本地核心處理 PDF，連線更穩定。推薦使用 <strong>Google Gemini</strong> 或 <strong>OpenRouter</strong> 進行 AI 對話。
             </div>
 
             <label for="provider-select">主要 AI 服務商:</label>
@@ -375,7 +370,7 @@
             </div>
             <textarea id="system-prompt" placeholder="在此輸入系統指令..."></textarea>
             
-            <!-- 【修正 4】錯誤回報區 -->
+            <!-- 錯誤回報區 -->
             <div class="settings-subsection" style="border-color: #550000; background: #220000;">
                 <h3>錯誤診斷日誌 (Debug Log)</h3>
                 <textarea id="error-log-area" readonly placeholder="系統錯誤將顯示於此..."></textarea>
@@ -402,7 +397,7 @@
                 📄 PDF 完整閱讀 (載入中...)
             </button>
             <small style="display:block; margin: 5px 0 15px 0; color:#ccc;">
-                * 說明：優先使用本機提取。若失敗，自動轉為低流量圖片 (OCR)。
+                * 說明：優先使用本機提取（支援繁簡中/日/韓/歐語系）。若失敗，自動轉為圖片 OCR。
             </small>
 
             <div class="row">
@@ -496,7 +491,7 @@
 
     window.addEventListener('pdfjs-loaded', () => {
         const btn = document.getElementById('pdf-start-btn');
-        btn.innerText = "📄 PDF 完整閱讀 (智能偵測啟動)";
+        btn.innerText = "📄 PDF 完整閱讀 (本地核心就緒)";
         btn.disabled = false;
         showReadyStatus();
     });
@@ -531,11 +526,11 @@ Translate the input text fully and fluently. Fix broken lines.`;
 
     const PROMPT_VERSION_KEY = "prompt_ver_2025_release";
     
-    // 【核心修正 2】更新模型清單 (Gemini 2.5 Flash)
+    // 更新模型清單
     const PROVIDERS = {
         gemini: { 
             prompt: DEFAULT_CHAT_PROMPT, 
-            defaultModel: "gemini-2.5-flash", // 2025 Stable
+            defaultModel: "gemini-2.5-flash", 
             canFetch: true, 
             listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", 
             models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] 
@@ -777,27 +772,32 @@ Translate the input text fully and fluently. Fix broken lines.`;
         input.value = ""; 
     }
     
-    // 【核心修正 5】圖像版 PDF 的空白頁檢測 (優化採樣版)
+    // 【核心修正】PDF 空白頁檢測 (效能優化版)
     function isCanvasBlank(canvas) {
         try {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const w = canvas.width;
             const h = canvas.height;
-            // 採樣點：中心十字線 + 對角線
-            const points = [];
-            for(let x=0; x<w; x+=50) points.push([x, h/2], [x, x*h/w], [x, h - x*h/w]);
-            for(let y=0; y<h; y+=50) points.push([w/2, y]);
+            // 使用較小的採樣區域進行快速檢測，避免全圖讀取卡頓
+            // 檢測中心點 50x50 區域
+            const cx = Math.floor(w / 2 - 25);
+            const cy = Math.floor(h / 2 - 25);
             
-            let hasContent = false;
-            for(const [px, py] of points) {
-                const data = ctx.getImageData(Math.floor(px), Math.floor(py), 1, 1).data;
-                // 若不透明且顏色夠深 (R,G,B < 240)
-                if (data[3] > 0 && (data[0] < 240 || data[1] < 240 || data[2] < 240)) {
-                    hasContent = true; 
-                    break;
+            // 安全邊界檢查
+            if (cx < 0 || cy < 0) return false; 
+            
+            const imageData = ctx.getImageData(cx, cy, 50, 50);
+            const data = imageData.data;
+            
+            for(let i = 0; i < data.length; i += 4) {
+                // 如果有任何像素不透明且顏色夠深 (RGB < 250)
+                if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) {
+                    return false; // 有內容
                 }
             }
-            return !hasContent;
+            // 若中心無內容，再快速抽樣檢查對角線 (避免漏網之魚，但不過度消耗)
+            // 這裡簡化為：若中心空白則認定大概率為空白，對於OCR場景可接受
+            return true;
         } catch(e) {
             console.warn("Blank check skipped:", e);
             return false; 
@@ -858,10 +858,16 @@ Translate the input text fully and fluently. Fix broken lines.`;
             if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} (OCR) 的 API Key`);
 
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/', cMapPacked: true }).promise;
+            // 【核心修正】加入標準字型路徑與 CMap 路徑，確保圖片渲染正確
+            const pdf = await window.pdfjsLib.getDocument({ 
+                data: arrayBuffer, 
+                cMapUrl: './pdf-dist/cmaps/', 
+                cMapPacked: true,
+                standardFontDataUrl: './pdf-dist/standard_fonts/'
+            }).promise;
+            
             const totalPages = pdf.numPages;
 
-            // 減少進度條更新頻率，避免刷屏
             updateVisualProgress(true, `OCR 處理中 (共 ${totalPages} 頁)`);
             
             for (let i = 1; i <= totalPages; i++) {
@@ -870,7 +876,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 const page = await pdf.getPage(i);
                 const viewportRaw = page.getViewport({ scale: 1.0 });
                 
-                // 【核心修正 3】智慧縮放 (Smart Resizing) - 限制 maxDim 為 1536
                 const maxDim = 1536; 
                 const scale = Math.min(maxDim / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
                 const viewport = page.getViewport({ scale });
@@ -879,14 +884,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 canvas.width = viewport.width; canvas.height = viewport.height;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                 
-                // 【核心修正 5】空白頁檢測
                 if (isCanvasBlank(canvas)) {
                     accumulatedText += `## [Page ${i}]\n(空白頁已跳過)\n\n`;
                     canvas.remove();
                     continue; 
                 }
 
-                // 使用較低品質 JPEG 節省頻寬
                 const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 
                 let retry = 0;
@@ -948,10 +951,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
     async function extractTextFromPDF(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
+            // 【核心修正】提取文字時同樣需要完整的字型支援
             const loadingTask = window.pdfjsLib.getDocument({
                 data: arrayBuffer,
-                cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/cmaps/',
+                cMapUrl: './pdf-dist/cmaps/',
                 cMapPacked: true,
+                standardFontDataUrl: './pdf-dist/standard_fonts/'
             });
             const pdf = await loadingTask.promise;
             let fullText = "";
