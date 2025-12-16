@@ -26,7 +26,7 @@
                 // 2. 設定 Worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
                 
-                console.log("PDF System Initialized (Local Mode with Geometry Engine)");
+                console.log("PDF System Initialized (Local Mode with Semantic Engine)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
 
             } catch (e) {
@@ -394,7 +394,7 @@
                 📄 PDF 完整閱讀 (本地核心就緒)
             </button>
             <small style="display:block; margin: 5px 0 15px 0; color:#ccc;">
-                * 說明：優先使用本機幾何提取（修復單字破碎與亂碼）。若失敗，自動轉為圖片 OCR。
+                * 說明：優先使用本機語義提取（修復單字破碎與亂碼）。若失敗，自動轉為圖片 OCR。
             </small>
 
             <div class="row">
@@ -463,11 +463,26 @@
 
 <script>
     // --- 【核心引擎 1】全能文字重組引擎 (Universal Text Normalizer) ---
-    // 負責處理所有語言的排版規則，修正 CJK 空間與 Latin 換行問題
+    // 負責對所有文字來源進行「語義感知」的後處理，清除多餘空格，修復格式
     class UniversalTextNormalizer {
-        static isCJK(char) {
-            // 涵蓋 繁簡中、日、韓 (漢字、假名、諺文)
-            return /[\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(char);
+        // 判斷是否為緊湊型語言 (CJK + 泰文等)
+        static isCompactLang(char) {
+            return /[\u2E80-\u2FD5\u3190-\u319f\u3400-\u4DBF\u4E00-\u9FCC\uF900-\uFAAD\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF\u0E00-\u0E7F]/.test(char);
+        }
+
+        // 判斷是否為前置型符號 (如 $ ( [ )
+        static isPrefixSymbol(char) {
+            return /[$¥€£([{'"]/.test(char);
+        }
+        
+        // 判斷是否為後置型符號 (如 % ) ] } . ,)
+        static isSuffixSymbol(char) {
+            return /[%\])}.,:;?!]/.test(char);
+        }
+        
+        // 判斷是否為數字
+        static isDigit(char) {
+            return /\d/.test(char);
         }
 
         static normalize(text) {
@@ -477,43 +492,40 @@
             let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
             // 2. 處理連字符號換行 (Hyphenation)
-            // 例: exam-\nple -> example
-            // 注意: 確保不是列表符號 (- item)
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
-            // 3. 處理單次換行 (Soft Wrap) vs 段落 (Paragraph)
-            // 策略: 將所有單次換行轉為特殊標記，暫時保留雙換行
+            // 3. 段落重組 (Paragraph Reconstruction)
             const lines = res.split("\n");
             let processed = "";
             
             for (let i = 0; i < lines.length; i++) {
+                // 去除行首行尾空白 (解決 "  人 造 纖 維  ")
                 let curr = lines[i].trim();
+                
                 if (curr.length === 0) {
-                    processed += "\n\n"; // 段落
+                    processed += "\n\n"; 
                     continue;
                 }
                 
                 if (i < lines.length - 1) {
                     let next = lines[i + 1].trim();
                     if (next.length === 0) {
-                        processed += curr + "\n"; // 下一行是空行，這裡是段落尾
+                        processed += curr + "\n"; 
                         continue;
                     }
                     
-                    // 檢查 curr 結尾與 next 開頭
                     let lastChar = curr.slice(-1);
                     let nextChar = next.charAt(0);
                     
-                    // 規則 A: 如果兩邊都是 CJK，直接合併 (無空白)
-                    if (this.isCJK(lastChar) && this.isCJK(nextChar)) {
+                    // 換行處黏合邏輯：
+                    // 如果兩邊都是緊湊語言，直接黏合
+                    if (this.isCompactLang(lastChar) && this.isCompactLang(nextChar)) {
                         processed += curr;
                     } 
-                    // 規則 B: 如果是句尾符號，保留換行或加空白? 通常視為軟換行，加空白
-                    // 除非是列表符號
+                    // 如果是列表符號，保留換行
                     else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) {
                         processed += curr + "\n";
                     }
-                    // 規則 C: 歐語系預設加空白合併
                     else {
                         processed += curr + " ";
                     }
@@ -522,11 +534,21 @@
                 }
             }
 
-            // 4. 清理多餘的 CJK 空白 (針對 Text PDF 可能產生的 "中 文" 情況)
-            // Regex: CJK + space + CJK -> CJKCJK
-            res = processed.replace(/([\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af])\s+([\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af])/g, "$1$2");
+            // 4. 強力正規化清理 (Regex Cleaning)
+            // 修復 OCR 或提取過程中漏網的 "人 造" (CJK + space + CJK)
+            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af\u0e00-\u0e7f])\s+([\u2e80-\u9fff\uac00-\ud7af\u0e00-\u0e7f])/g, "$1$2");
+            
+            // 修復貨幣與數字 "$ 1,632" -> "$1,632"
+            processed = processed.replace(/([$¥€£])\s+(\d)/g, "$1$2");
+            
+            // 修復括號 "( 5 款" -> "(5款"
+            processed = processed.replace(/([(])\s+(.)/g, "$1$2");
+            processed = processed.replace(/(.)\s+([)])/g, "$1$2");
 
-            return res.replace(/\n{3,}/g, "\n\n").trim();
+            // 修復標點前的多餘空格 "Word ." -> "Word."
+            processed = processed.replace(/\s+([,.:;?!])/g, "$1");
+
+            return processed.replace(/\n{3,}/g, "\n\n").trim();
         }
     }
 
@@ -810,7 +832,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
         input.value = ""; 
     }
     
-    // PDF 空白頁檢測 (效能優化版)
+    // PDF 空白頁檢測
     function isCanvasBlank(canvas) {
         try {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -846,12 +868,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
             let sourceMode = "text";
 
             if (!alwaysAI) {
-                // 使用新的幾何提取函式
+                // 使用改進的幾何提取
                 const localText = await extractTextFromPDF_Geometric(file);
-                // 驗證提取品質
+                
                 const cleanText = localText ? localText.replace(/\s/g, '') : "";
                 if (cleanText.length > 50 && !/[\uFFFD]/.test(cleanText.slice(0, 100))) {
-                    // 提取成功後，立刻進行 Universal Normalization
+                    // **關鍵步驟**：提取後立刻進行語義正規化
                     extractedText = UniversalTextNormalizer.normalize(localText);
                     sourceMode = "text";
                     updateStatusBar("文字提取成功，準備處理...", "busy");
@@ -921,7 +943,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     } catch(e) { retry++; await sleep(1500); }
                 }
                 
-                // OCR 結果也必須經過 Universal Normalizer
+                // OCR 結果也必須經過語義正規化
                 accumulatedText += `## [Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
                 canvas.remove(); await sleep(200); 
             }
@@ -941,7 +963,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
             updateStatusBar("正在翻譯全文...", "busy");
             const transInput = `[SOURCE TEXT]:\n${accumulatedText}`;
             const finalRes = await callAI(transProvider, transInput, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
-            // 翻譯結果也進行一次標準化，確保格式整齊
+            
             addMessage('assistant', UniversalTextNormalizer.normalize(finalRes));
         } else {
             updateStatusBar("處理完成", "ready");
@@ -963,7 +985,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
     }
 
     // --- 【核心引擎 2】幾何座標文字提取器 (Geometric Text Extractor) ---
-    // 解決 Text PDF 中 "p p le" 破碎問題的核心
+    // 改進版：引入語義黏合邏輯，防止 "人 造" 或 "$ 1"
     async function extractTextFromPDF_Geometric(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -972,7 +994,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 cMapUrl: './pdf-dist/cmaps/',
                 cMapPacked: true,
                 standardFontDataUrl: './pdf-dist/standard_fonts/',
-                disableCombineTextItems: false // 讓 PDF.js 先做初步合併，我們做修正
+                disableCombineTextItems: false 
             });
             const pdf = await loadingTask.promise;
             let fullText = "";
@@ -987,7 +1009,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     continue;
                 }
 
-                // 幾何組合邏輯
                 let pageStr = "";
                 let lastY = -1;
                 let lastX = -1;
@@ -998,29 +1019,48 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     const str = item.str;
                     if (!str) continue;
 
-                    // 取得幾何資訊: transform[4]=x, transform[5]=y
-                    // 注意: y 軸通常是由下往上，但為了簡單比對我們取絕對值差
                     const tx = item.transform;
                     const x = tx[4];
                     const y = tx[5];
-                    const h = item.height || 10; // 預設高度防錯
+                    const h = item.height || 10; 
                     const w = item.width;
 
-                    // 1. 換行檢測 (Line Break)
-                    // 如果 Y 軸變化超過字體高度的一半，視為換行
+                    // 1. 換行檢測
                     if (lastY !== -1 && Math.abs(y - lastY) > h * 0.5) {
                         pageStr += "\n";
-                        lastX = -1; // 重置 X
+                        lastX = -1; 
                     } 
-                    // 2. 水平間距檢測 (Spacing)
+                    // 2. 語義感知黏合 (Semantic Aware Gluing)
                     else if (lastX !== -1) {
                         const expectedStart = lastX + lastWidth;
                         const gap = x - expectedStart;
                         
-                        // 閾值判斷: 
-                        // 如果間距 > 字體高度的 15%，視為單字分隔 -> 加空白
-                        // 如果間距很小 (甚至負數，代表 Kerning)，視為單字內部 -> 不加空白
-                        if (gap > h * 0.15 && str.trim().length > 0 && lastStr.trim().length > 0) {
+                        // 獲取前後字元進行類型判斷
+                        const prevChar = lastStr.slice(-1);
+                        const currChar = str.charAt(0);
+                        
+                        let shouldAddSpace = false;
+
+                        // **黏合規則 A**: 如果兩邊都是緊湊語言 (CJK)，強制不加空格
+                        if (UniversalTextNormalizer.isCompactLang(prevChar) && UniversalTextNormalizer.isCompactLang(currChar)) {
+                            shouldAddSpace = false;
+                        }
+                        // **黏合規則 B**: 前面是貨幣/左括號等前置符號，後面是數字/文字 -> 不加空格
+                        else if (UniversalTextNormalizer.isPrefixSymbol(prevChar)) {
+                            shouldAddSpace = false;
+                        }
+                        // **黏合規則 C**: 後面是標點/右括號 -> 不加空格
+                        else if (UniversalTextNormalizer.isSuffixSymbol(currChar)) {
+                            shouldAddSpace = false;
+                        }
+                        // **規則 D**: 其他情況 (如英文)，依賴幾何距離
+                        else {
+                            if (gap > h * 0.15) { // 降低閾值以適應緊湊排版
+                                shouldAddSpace = true;
+                            }
+                        }
+
+                        if (shouldAddSpace && str.trim().length > 0 && lastStr.trim().length > 0) {
                             pageStr += " ";
                         }
                     }
@@ -1284,7 +1324,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     // 這裡改用幾何提取 + 全能重組
                     const pdfText = await extractTextFromPDF_Geometric(selectedFile);
                     if(pdfText) { 
-                        // 確保 PDF 文字進入 Prompt 前已經過標準化
+                        // **關鍵步驟**：進入 Prompt 前確保已經正規化
                         const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
                         input=`[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; 
                         skipFile=true; 
