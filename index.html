@@ -81,6 +81,7 @@
         }
 
         body {
+            /* 修正：字型退路，確保多國語言顯示 */
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -221,13 +222,15 @@
         .message.error { border-left-color: #ff0000; background: #330000; }
         .message.error h1.msg-heading { color: #ff5555; }
 
+        /* 修正：排版渲染引擎最佳化 */
         .markdown-body { 
             line-height: 1.7; 
             overflow-wrap: break-word; 
-            word-break: break-word; 
-            unicode-bidi: isolate; 
-            text-align: justify; 
+            word-break: break-word; /* 針對無空格語言(如泰文、長網址) */
+            unicode-bidi: isolate; /* 確保混合語文方向隔離 */
+            text-align: justify; /* 讓長段落排版更整齊 */
         }
+        /* 針對 RTL 語系自動調整方向 */
         .markdown-body[dir="auto"] { text-align: start; }
 
         .markdown-body h1, .markdown-body h2 { color: #88CCFF; border-bottom: none; margin-top: 1.5em; }
@@ -550,33 +553,55 @@
             return 'other'; // 印度文(Devanagari)等其他
         }
 
+        static cleanBoilerplate(text) {
+            // Header/Footer Cleaner: 清除版權聲明、頁碼等雜訊
+            const noisePatterns = [
+                /Powered by TCPDF \(www\.tcpdf\.org\)/gi,
+                /版權持有者為消費者委員會/g,
+                /除作個人非商業用途，不得以任何形式傳送/g,
+                /產品比較試驗、分析評論等/g,
+                /Copyright-Notice-and-Disclaimer/gi,
+                /https:\/\/www\.consumer\.org\.hk/gi,
+                /\d{3}\s+2025\s+\.\s+\d{1,2}\s+選擇/g, // Specific magazine header
+                /^\d+\s*$/gm // Standalone page numbers
+            ];
+            
+            let cleaned = text;
+            noisePatterns.forEach(pattern => {
+                cleaned = cleaned.replace(pattern, '');
+            });
+            return cleaned;
+        }
+
         static normalize(text) {
             if (!text) return "";
             
+            // 0. 清除 Boilerplate (頁眉頁腳雜訊)
+            let res = this.cleanBoilerplate(text);
+
             // 1. 統一換行符號
-            let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            res = res.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
             // 2. 處理連字符號換行 (Hyphenation) Ex: pro-\ncess -> process
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
             // 3. Smart CJK Joiner: Remove spaces between CJK chars (Handle "填   充   物")
-            // CRITICAL FIX: Use [ \t]+ instead of \s+ to PRESERVE NEWLINES (\n)
             // Range includes: Han, Kana, Hangul, Fullwidth Punctuation
             const cjk = "[\u2e80-\u9fff\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]";
-            const regexCJK = new RegExp(`(${cjk})[ \\t]+(${cjk})`, 'g');
+            const regexCJK = new RegExp(`(${cjk})\\s+(${cjk})`, 'g');
             // Run twice to handle "A B C" -> "AB C" -> "ABC" overlap issues in regex
             res = res.replace(regexCJK, "$1$2").replace(regexCJK, "$1$2");
 
             // 4. CJK - Punctuation Glue (Fix "物 、" -> "物、")
             // Handle CJK char followed by half-width punct with space
-            res = res.replace(new RegExp(`(${cjk})[ \\t]+([,.;:?!])`, 'g'), "$1$2");
+            res = res.replace(new RegExp(`(${cjk})\\s+([,.;:?!])`, 'g'), "$1$2");
             // Handle space around CJK punctuation (Fullwidth)
-            res = res.replace(/[ \t]+([、，。：；？！])/g, "$1"); 
-            res = res.replace(/([、，。：；？！])[ \t]+/g, "$1");
+            res = res.replace(/\s+([、，。：；？！])/g, "$1"); 
+            res = res.replace(/([、，。：；？！])\s+/g, "$1");
 
             // 5. Smart Number Joiner: Fix "2025 . 11" -> "2025.11"
-            res = res.replace(/(\d+)[ \t]+(\.)[ \t]+(\d+)/g, "$1$2$3");
-            res = res.replace(/(\d+)[ \t]+(\.)/g, "$1$2"); 
+            res = res.replace(/(\d+)\s+(\.)\s+(\d+)/g, "$1$2$3");
+            res = res.replace(/(\d+)\s+(\.)/g, "$1$2"); 
 
             // 6. Paragraph Reconstruction
             const lines = res.split("\n");
@@ -1075,15 +1100,26 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 disableCombineTextItems: false // 保持原始碎片，便於精確分析
             });
             const pdf = await loadingTask.promise;
-            
-            // Phase 1: Read all pages and store raw content
-            let pagesContent = [];
-            
+            let fullText = "";
+
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const viewport = page.getViewport({ scale: 1.0 });
                 const content = await page.getTextContent({ includeMarkedContent: true });
                 let items = content.items.filter(item => item.str && item.str.trim().length > 0);
+
+                // Header/Footer Cleaner (Coordinate Based): 去除頁面最頂和最底的雜訊 (5% - 7%)
+                const pageHeight = viewport.height;
+                const margin = pageHeight * 0.05; // 5% margin
+                items = items.filter(item => {
+                    const y = viewport.height - item.transform[5]; // Flip Y
+                    return y > margin && y < (pageHeight - margin);
+                });
+
+                if (items.length === 0) {
+                    fullText += `## [Page ${i}]\n\n`;
+                    continue;
+                }
 
                 // A. 預處理：正規化項目
                 let normalizedItems = items.map(item => {
@@ -1100,6 +1136,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 });
 
                 // Ghost Text Remover: 去除重疊的陰影字 (De-duplication Logic)
+                // 1. Sort by Y (primary) then X (secondary) to put potential duplicates next to each other
                 normalizedItems.sort((a, b) => {
                     const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
                     if (Math.abs(a.y - b.y) < rowTolerance) {
@@ -1108,6 +1145,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     return a.y - b.y; // Top to Bottom
                 });
 
+                // 2. Filter duplicates
                 const uniqueItems = [];
                 for (let k = 0; k < normalizedItems.length; k++) {
                     const curr = normalizedItems[k];
@@ -1123,46 +1161,10 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     }
                     uniqueItems.push(curr);
                 }
-                
-                pagesContent.push({
-                    pageIndex: i,
-                    items: uniqueItems,
-                    height: viewport.height,
-                    width: viewport.width
-                });
-            }
-
-            // Phase 2: Global Analysis for Headers/Footers
-            const noisePatterns = analyzeHeadersFooters(pagesContent);
-            console.log("Detected Noise Patterns:", noisePatterns);
-
-            // Phase 3: Assembly with Noise Filtering
-            let fullText = "";
-            for (const pageData of pagesContent) {
-                const { pageIndex, items, height } = pageData;
-                
-                // Filter items based on noise patterns
-                // REDUCED MARGIN: Only analyze top 5% and bottom 5%
-                const filteredItems = items.filter(item => {
-                    const isTop = item.y < height * 0.05; // Top 5%
-                    const isBottom = item.y > height * 0.95; // Bottom 5%
-                    
-                    if (isTop || isBottom) {
-                        const normalizedStr = item.str.trim().replace(/\d+/g, '#');
-                        if (noisePatterns.has(normalizedStr)) {
-                            return false; // Remove noise
-                        }
-                    }
-                    return true;
-                });
-
-                if (filteredItems.length === 0) {
-                    fullText += `## [Page ${pageIndex}]\n\n`;
-                    continue;
-                }
+                normalizedItems = uniqueItems;
 
                 // B. 執行 XY-Cut 分欄檢測
-                const columns = detectColumns(filteredItems, pageData.width);
+                const columns = detectColumns(normalizedItems, viewport.width);
                 let pageStr = "";
                 
                 // C. 針對每一欄進行行排序與組裝
@@ -1170,59 +1172,27 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     columnItems.sort((a, b) => {
                         const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
                         if (Math.abs(a.y - b.y) < rowTolerance) {
-                            return a.x - b.x; 
+                            return a.x - b.x; // 同一行，按 X 排序
                         }
-                        return a.y - b.y; 
+                        return a.y - b.y; // 不同行，按 Y 排序
                     });
 
                     // 使用升級版的智能黏合邏輯 (Smart CJK Joiner included)
                     pageStr += assembleLinesAdaptive(columnItems) + "\n";
                 }
 
-                fullText += `## [Page ${pageIndex}]\n\n${pageStr}\n\n`;
+                fullText += `## [Page ${i}]\n${pageStr}\n\n`;
             }
-
             return fullText;
-
         } catch (e) {
             console.error("Advanced extract failed", e);
             return null;
         }
     }
 
-    // --- 輔助算法：頁眉頁腳頻率分析 ---
-    function analyzeHeadersFooters(pages) {
-        const patternCounts = new Map();
-        const noiseSet = new Set();
-
-        pages.forEach(page => {
-            const { items, height } = page;
-            items.forEach(item => {
-                // REDUCED MARGIN: Only analyze top 5% and bottom 5%
-                const isTop = item.y < height * 0.05;
-                const isBottom = item.y > height * 0.95;
-                
-                if (isTop || isBottom) {
-                    // Normalize: Replace numbers with hash to handle "Page 1", "Page 2"
-                    const normalized = item.str.trim().replace(/\d+/g, '#');
-                    if (normalized.length > 0) {
-                        patternCounts.set(normalized, (patternCounts.get(normalized) || 0) + 1);
-                    }
-                }
-            });
-        });
-
-        // Threshold: If pattern appears more than 2 times, consider it noise
-        for (const [pattern, count] of patternCounts) {
-            if (count > 2) {
-                noiseSet.add(pattern);
-            }
-        }
-        return noiseSet;
-    }
-
     // --- 輔助算法：XY-Cut 分欄偵測 ---
     function detectColumns(items, pageWidth) {
+        // 簡單版 XY-Cut：尋找頁面中央是否存在顯著的垂直空白帶
         const bucketSize = 2;
         const bins = new Array(Math.ceil(pageWidth / bucketSize)).fill(0);
         
@@ -1230,13 +1200,13 @@ Translate the input text fully and fluently. Fix broken lines.`;
             const startBin = Math.floor(item.x / bucketSize);
             const endBin = Math.floor((item.x + item.w) / bucketSize);
             for(let k = startBin; k <= endBin; k++) {
-                if(k >= 0 && k < bins.length) bins[k] = 1; 
+                if(k >= 0 && k < bins.length) bins[k] = 1; // 標記為有內容
             }
         });
 
-        // Search wider range: 10% to 90% (Improved Sensitivity)
-        const searchStart = Math.floor(bins.length * 0.1);
-        const searchEnd = Math.floor(bins.length * 0.9);
+        // 搜尋範圍：頁面中間 20% ~ 80%
+        const searchStart = Math.floor(bins.length * 0.2);
+        const searchEnd = Math.floor(bins.length * 0.8);
         
         let gaps = [];
         let currentGap = { start: -1, width: 0 };
@@ -1253,8 +1223,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
             }
         }
 
-        // Threshold: 1% of page width or ~5 buckets (10px) (Improved Sensitivity)
-        const splitThreshold = Math.max(bins.length * 0.01, 5);
+        const splitThreshold = bins.length * 0.02;
         const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
 
         if (validGap.width > splitThreshold) {
@@ -1276,12 +1245,14 @@ Translate the input text fully and fluently. Fix broken lines.`;
         
         for (let item of items) {
             if (lastItem) {
+                // 1. 換行判斷
                 const rowTolerance = Math.min(lastItem.fontHeight, item.fontHeight) * 0.5;
                 const isNewLine = (item.y - lastItem.y > rowTolerance) || lastItem.hasEOL;
 
                 if (isNewLine) {
                     result += "\n";
                 } else {
+                    // 2. 智能黏合矩陣 (Smart Glue Matrix)
                     const prevChar = lastItem.str.slice(-1);
                     const currChar = item.str.charAt(0);
                     const typeA = UniversalTextNormalizer.getScriptType(prevChar);
@@ -1290,16 +1261,21 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     const gap = item.x - (lastItem.x + lastItem.w);
                     
                     // Smart CJK Joiner Logic:
+                    // 規則 1: 如果前後都是 CJK，強制不加空格 (消除分散對齊造成的 Phantom Spaces)
                     if (typeA === 'cjk' && typeB === 'cjk') {
-                        result += ""; 
+                        result += ""; // Force glue
                     }
+                    // 規則 2: CJK 與 Latin/Num 混合 -> 依用戶要求也不加空格
                     else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
-                        result += ""; 
+                        result += ""; // Force glue
                     }
+                    // 規則 3: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合
                     else if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
                         if (gap > item.fontHeight * 2) result += " "; 
                     }
+                    // 規則 4: 歐語系 (Latin/Latin) -> 依閾值判斷
                     else {
+                        // 閾值：字體高度的 20% (標準英文間距)
                         const spaceThreshold = item.fontHeight * 0.2;
                         if (gap > spaceThreshold) {
                             result += " ";
