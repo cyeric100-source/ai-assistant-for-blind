@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 視障助理 (2025 全球語文精確版)</title>
+    <title>AI 視障助理 (2025 全能排版終極版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -46,7 +46,7 @@
                 // 2. 設定 Worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
                 
-                console.log("PDF System Initialized (Global Script & Smart Glue)");
+                console.log("PDF System Initialized (Global Script Support)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
 
             } catch (e) {
@@ -81,8 +81,8 @@
         }
 
         body {
-            /* 修正：字型退路，確保多國語言顯示 */
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            /* 修正 3：排版渲染引擎最佳化 - 字型退路 */
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
@@ -222,13 +222,12 @@
         .message.error { border-left-color: #ff0000; background: #330000; }
         .message.error h1.msg-heading { color: #ff5555; }
 
-        /* 修正：排版渲染引擎最佳化 */
+        /* 修正 3：排版渲染引擎最佳化 - RTL 與斷字 */
         .markdown-body { 
             line-height: 1.7; 
             overflow-wrap: break-word; 
-            word-break: break-word; /* 針對無空格語言(如泰文、長網址) */
+            word-break: break-word;
             unicode-bidi: isolate; /* 確保混合語文方向隔離 */
-            text-align: justify; /* 讓長段落排版更整齊 */
         }
         /* 針對 RTL 語系自動調整方向 */
         .markdown-body[dir="auto"] { text-align: start; }
@@ -499,7 +498,8 @@
 </footer>
 
 <script>
-    // --- 【修正】 全球語言文字庫 & 智能黏合矩陣 (Smart Glue Matrix) ---
+    // --- 【修正 1 & 2】全球語言文字庫 & 智能黏合矩陣 ---
+    // 升級版 UniversalTextNormalizer：處理 CJK/SEA/RTL/Latin 等複雜混合語境
     class UniversalTextNormalizer {
         
         // 判定字符所屬的語系腳本 (Script)
@@ -533,7 +533,6 @@
 
             // 4. 拉丁/西里爾/希臘/數字 (Space-based)
             // 包含：英文、法文、俄文、德文、西班牙文、數字
-            // 注意：將數字歸類為 latin，以便處理 "Page 1" -> "Page1" 或 "S1"
             if ((code >= 0x0041 && code <= 0x005A) || // A-Z
                 (code >= 0x0061 && code <= 0x007A) || // a-z
                 (code >= 0x0030 && code <= 0x0039) || // 0-9
@@ -542,42 +541,20 @@
                 (code >= 0x0370 && code <= 0x03FF))   // Greek
                 return 'latin';
 
-            // 5. 標點符號 (Punctuation) - 特殊處理，如 "2025 ." -> "2025."
-            if ((code >= 0x0021 && code <= 0x002F) || 
-                (code >= 0x003A && code <= 0x0040) ||
-                (code >= 0x005B && code <= 0x0060) || 
-                (code >= 0x007B && code <= 0x007E))
-                return 'punct';
-
-            return 'other'; // 印度文(Devanagari)等其他
+            return 'other'; // 標點符號、印度文(Devanagari)等其他
         }
 
-        static cleanBoilerplate(text) {
-            // Header/Footer Cleaner: 清除版權聲明、頁碼等雜訊
-            const noisePatterns = [
-                /Powered by TCPDF \(www\.tcpdf\.org\)/gi,
-                /版權持有者為消費者委員會/g,
-                /除作個人非商業用途，不得以任何形式傳送/g,
-                /產品比較試驗、分析評論等/g,
-                /Copyright-Notice-and-Disclaimer/gi,
-                /https:\/\/www\.consumer\.org\.hk/gi
-            ];
-            
-            let cleaned = text;
-            noisePatterns.forEach(pattern => {
-                cleaned = cleaned.replace(pattern, '');
-            });
-            return cleaned;
+        // 判斷是否為緊湊型語言 (用於相容舊代碼)
+        static isCompactLang(char) {
+            const type = this.getScriptType(char);
+            return type === 'cjk' || type === 'sea';
         }
 
         static normalize(text) {
             if (!text) return "";
             
-            // 0. 清除 Boilerplate (頁眉頁腳雜訊)
-            let res = this.cleanBoilerplate(text);
-
             // 1. 統一換行符號
-            res = res.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
             // 2. 處理連字符號換行 (Hyphenation) Ex: pro-\ncess -> process
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
@@ -631,9 +608,8 @@
 
             // 4. 強力正規化清理 (Regex Cleaning) - 針對單行內的破碎修復
             
-            // Smart CJK Joiner: 強力修復 CJK 內部空格 (即使是多個空格) "中   文" -> "中文"
-            // \u2e80-\u9fff 包含大部分漢字, \u3040-\u30ff 假名, \uac00-\ud7af 韓文
-            processed = processed.replace(/([\u2e80-\u9fff\u3040-\u30ff\uac00-\ud7af])\s+([\u2e80-\u9fff\u3040-\u30ff\uac00-\ud7af])/g, "$1$2");
+            // 修復 CJK 內部空格 "中 文" -> "中文"
+            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af])\s+([\u2e80-\u9fff\uac00-\ud7af])/g, "$1$2");
             
             // 修復 泰文/寮文/高棉文 內部空格 (SEA 強制黏合)
             processed = processed.replace(/([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])\s+([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])/g, "$1$2");
@@ -648,10 +624,6 @@
             // 修復括號 "( 5 款" -> "(5款"
             processed = processed.replace(/([(])\s+(.)/g, "$1$2");
             processed = processed.replace(/(.)\s+([)])/g, "$1$2");
-
-            // 修復數字前的標點空格 "2025 . 11" -> "2025.11" (Smart Number Joiner)
-            processed = processed.replace(/(\d)\s+([.,])\s+(\d)/g, "$1$2$3");
-            processed = processed.replace(/(\d)\s+([.,])/g, "$1$2");
 
             // 修復標點前的多餘空格 "Word ." -> "Word."
             processed = processed.replace(/\s+([,.:;?!])/g, "$1");
@@ -1110,25 +1082,28 @@ Translate the input text fully and fluently. Fix broken lines.`;
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.0 });
-                const content = await page.getTextContent({ includeMarkedContent: true });
-                let items = content.items.filter(item => item.str && item.str.trim().length > 0);
+                
+                // --- 策略 1: 嘗試 Tagged PDF (Gold Standard) ---
+                let structText = null;
+                try {
+                    const structTree = await page.getStructTree();
+                    if (structTree) {
+                        console.log(`Page ${i} has StructTree (Tagged PDF detected). Using Layout Analysis for precision.`);
+                    }
+                } catch(e) { /* No struct tree, ignore */ }
 
-                // Header/Footer Cleaner (Coordinate Based): 去除頁面最頂和最底的雜訊 (3%)
-                const pageHeight = viewport.height;
-                const margin = pageHeight * 0.03;
-                items = items.filter(item => {
-                    const y = viewport.height - item.transform[5]; // Flip Y
-                    return y > margin && y < (pageHeight - margin);
-                });
+                // --- 策略 2: Advanced Layout Analysis (XY-Cut) ---
+                const content = await page.getTextContent({ includeMarkedContent: true });
+                const items = content.items.filter(item => item.str && item.str.trim().length > 0);
 
                 if (items.length === 0) {
                     fullText += `## [Page ${i}]\n\n`;
                     continue;
                 }
 
-                // A. 預處理：正規化項目
-                let normalizedItems = items.map(item => {
+                // A. 預處理：計算平均字寬與正規化座標
+                const viewport = page.getViewport({ scale: 1.0 });
+                const normalizedItems = items.map(item => {
                     const tx = item.transform;
                     return {
                         str: item.str,
@@ -1137,30 +1112,9 @@ Translate the input text fully and fluently. Fix broken lines.`;
                         w: item.width,
                         h: item.height || 10,
                         hasEOL: item.hasEOL,
-                        fontHeight: Math.abs(tx[3]) 
+                        fontHeight: Math.abs(tx[3]) // 字體實際高度
                     };
                 });
-
-                // Ghost Text Remover: 去除重疊的陰影字 (De-duplication)
-                // 先按 Y 再按 X 排序，讓重疊字相鄰
-                normalizedItems.sort((a, b) => {
-                    const yDiff = Math.abs(a.y - b.y);
-                    if (yDiff < 2) return a.x - b.x;
-                    return a.y - b.y;
-                });
-
-                const uniqueItems = [];
-                normalizedItems.forEach(item => {
-                    const last = uniqueItems[uniqueItems.length - 1];
-                    // 如果文字相同，且座標極度接近 (X<2, Y<2)，視為鬼影
-                    if (last && item.str === last.str && 
-                        Math.abs(item.x - last.x) < 2 && 
-                        Math.abs(item.y - last.y) < 2) {
-                        return; // 跳過鬼影
-                    }
-                    uniqueItems.push(item);
-                });
-                normalizedItems = uniqueItems;
 
                 // B. 執行 XY-Cut 分欄檢測
                 const columns = detectColumns(normalizedItems, viewport.width);
@@ -1176,7 +1130,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                         return a.y - b.y; // 不同行，按 Y 排序
                     });
 
-                    // 使用升級版的智能黏合邏輯 (Smart CJK Joiner included)
+                    // 使用升級版的智能黏合邏輯
                     pageStr += assembleLinesAdaptive(columnItems) + "\n";
                 }
 
@@ -1235,7 +1189,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
         return [items];
     }
 
-    // --- 【修正】升級版輔助算法：適應性智能文字組裝 (Smart Glue Matrix) ---
+    // --- 【修正 2】升級版輔助算法：適應性智能文字組裝 (Smart Glue Matrix) ---
     function assembleLinesAdaptive(items) {
         if (items.length === 0) return "";
         
@@ -1259,23 +1213,22 @@ Translate the input text fully and fluently. Fix broken lines.`;
 
                     const gap = item.x - (lastItem.x + lastItem.w);
                     
-                    // Smart CJK Joiner Logic:
-                    // 規則 1: 如果前後都是 CJK，強制不加空格 (消除分散對齊造成的 Phantom Spaces)
-                    if (typeA === 'cjk' && typeB === 'cjk') {
-                        result += ""; // Force glue
-                    }
-                    // 規則 2: CJK 與 Latin/Num 混合 -> 依用戶要求也不加空格
-                    else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
-                        result += ""; // Force glue
-                    }
-                    // 規則 3: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合
-                    else if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
+                    // 規則 A: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合 (無視 gap)
+                    if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
+                        // 僅在極大間距(如 Tab)時才分開
                         if (gap > item.fontHeight * 2) result += " "; 
                     }
-                    // 規則 4: 歐語系 (Latin/Latin) -> 依閾值判斷
+                    // 規則 B: CJK 之間，或 CJK 與 Latin/Num 混合 -> 強制黏合 (依用戶要求無多餘空格)
+                    else if ((typeA === 'cjk' && typeB === 'cjk') || 
+                             (typeA === 'cjk' && typeB === 'latin') || 
+                             (typeA === 'latin' && typeB === 'cjk')) {
+                         // 除非間距大到像 Tab，否則黏合
+                         if (gap > item.fontHeight * 1.5) result += " ";
+                    }
+                    // 規則 C: 歐語系 (Latin/Latin) -> 依閾值判斷
                     else {
-                        // 閾值：字體高度的 20% (標準英文間距)
-                        const spaceThreshold = item.fontHeight * 0.2;
+                        // 閾值：字體高度的 35%
+                        const spaceThreshold = item.fontHeight * 0.35;
                         if (gap > spaceThreshold) {
                             result += " ";
                         }
@@ -1416,6 +1369,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
     
     function addMessage(role, content) {
         const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
+        // 修正 3：加入 HTML dir="auto" 屬性確保顯示正確
         div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
         if(role==='assistant') {
             const btn = document.createElement('button'); btn.className='mini-copy-btn'; btn.innerText='複製 (Alt+Shift+R)';
