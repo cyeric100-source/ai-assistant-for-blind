@@ -239,6 +239,11 @@
             border: 1px solid #444; white-space: pre; 
         }
         .markdown-body code { background: #333; padding: 2px 4px; word-break: break-all; }
+        
+        /* 表格樣式 */
+        .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+        .markdown-body th, .markdown-body td { border: 1px solid #555; padding: 8px; text-align: left; }
+        .markdown-body th { background-color: #333; color: #fff; }
 
         .controls-wrapper {
             position: fixed; bottom: 0; left: 0; right: 0;
@@ -1066,7 +1071,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
         else { el.classList.remove('active'); el.innerText = ""; }
     }
 
-    // --- 【核心引擎 2 (升級版)】 Advanced PDF Text Engine (XY-Cut & Adaptive) ---
+    // --- 【核心引擎 2 (升級版)】 Advanced PDF Text Engine (XY-Cut & Table Detection & De-duplication) ---
     async function extractTextFromPDF_Accurate(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -1075,7 +1080,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 cMapUrl: './pdf-dist/cmaps/',
                 cMapPacked: true,
                 standardFontDataUrl: './pdf-dist/standard_fonts/',
-                disableCombineTextItems: false // 保持原始碎片，便於精確分析
+                disableCombineTextItems: false
             });
             const pdf = await loadingTask.promise;
             let fullText = "";
@@ -1083,56 +1088,62 @@ Translate the input text fully and fluently. Fix broken lines.`;
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 
-                // --- 策略 1: 嘗試 Tagged PDF (Gold Standard) ---
-                let structText = null;
-                try {
-                    const structTree = await page.getStructTree();
-                    if (structTree) {
-                        console.log(`Page ${i} has StructTree (Tagged PDF detected). Using Layout Analysis for precision.`);
-                    }
-                } catch(e) { /* No struct tree, ignore */ }
-
-                // --- 策略 2: Advanced Layout Analysis (XY-Cut) ---
+                // 1. Get raw text content with styles
                 const content = await page.getTextContent({ includeMarkedContent: true });
-                const items = content.items.filter(item => item.str && item.str.trim().length > 0);
+                let items = content.items.filter(item => item.str && item.str.trim().length > 0);
+
+                // --- 修正 3: Metadata Fallback (標籤補救) ---
+                if (items.length < 50) {
+                    try {
+                        const structTree = await page.getStructTree();
+                        if (structTree) {
+                            const altTexts = extractAltText(structTree);
+                            if (altTexts.length > 0) {
+                                // Add fake items for alt text to ensure they are included
+                                const viewport = page.getViewport({ scale: 1.0 });
+                                altTexts.forEach(alt => {
+                                    items.push({
+                                        str: alt,
+                                        transform: [10, 0, 0, 10, 0, viewport.height], // Dummy transform
+                                        width: 100, height: 10, hasEOL: true
+                                    });
+                                });
+                            }
+                        }
+                    } catch(e) { console.warn("StructTree extraction failed:", e); }
+                }
 
                 if (items.length === 0) {
                     fullText += `## [Page ${i}]\n\n`;
                     continue;
                 }
 
-                // A. 預處理：計算平均字寬與正規化座標
                 const viewport = page.getViewport({ scale: 1.0 });
-                const normalizedItems = items.map(item => {
+                
+                // Pre-process items: Normalize coordinates and properties
+                let normalizedItems = items.map(item => {
                     const tx = item.transform;
+                    // pdf.js: [scaleX, skewY, skewX, scaleY, translateX, translateY]
+                    // We need (x, y) where y is from top-left (PDF is bottom-left usually)
+                    let x = tx[4];
+                    let y = viewport.height - tx[5]; 
                     return {
                         str: item.str,
-                        x: tx[4],
-                        y: viewport.height - tx[5], // Flip Y
+                        x: x,
+                        y: y,
                         w: item.width,
-                        h: item.height || 10,
-                        hasEOL: item.hasEOL,
-                        fontHeight: Math.abs(tx[3]) // 字體實際高度
+                        h: item.height || Math.abs(tx[3]) || 10,
+                        fontHeight: Math.abs(tx[3]) || 10
                     };
                 });
 
-                // B. 執行 XY-Cut 分欄檢測
-                const columns = detectColumns(normalizedItems, viewport.width);
-                let pageStr = "";
-                
-                // C. 針對每一欄進行行排序與組裝
-                for (const columnItems of columns) {
-                    columnItems.sort((a, b) => {
-                        const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
-                        if (Math.abs(a.y - b.y) < rowTolerance) {
-                            return a.x - b.x; // 同一行，按 X 排序
-                        }
-                        return a.y - b.y; // 不同行，按 Y 排序
-                    });
+                // --- 修正 1: Preprocessing (座標去重) ---
+                normalizedItems = removeGhosting(normalizedItems);
 
-                    // 使用升級版的智能黏合邏輯
-                    pageStr += assembleLinesAdaptive(columnItems) + "\n";
-                }
+                // --- 修正 2 & 4: Layout Analysis & Table Reconstruction ---
+                // 使用 AdvancedLayoutEngine 進行處理
+                const layoutEngine = new AdvancedLayoutEngine(normalizedItems, viewport.width);
+                const pageStr = layoutEngine.process();
 
                 fullText += `## [Page ${i}]\n${pageStr}\n\n`;
             }
@@ -1140,6 +1151,271 @@ Translate the input text fully and fluently. Fix broken lines.`;
         } catch (e) {
             console.error("Advanced extract failed", e);
             return null;
+        }
+    }
+
+    // 輔助函數：遞迴提取 Alt Text
+    function extractAltText(node) {
+        let texts = [];
+        if (node.alt) texts.push(node.alt);
+        if (node.actualText) texts.push(node.actualText);
+        if (node.children) {
+            node.children.forEach(child => {
+                texts = texts.concat(extractAltText(child));
+            });
+        }
+        return texts;
+    }
+
+    // 輔助函數：去重 (Ghosting Removal)
+    function removeGhosting(items) {
+        if (items.length < 2) return items;
+        // Sort specifically for de-duplication detection: strictly by Y then X
+        // Note: We need a copy to sort, but we want to filter the original list logic
+        // Better: Iterate through the original list, but checking against neighbors requires sorted proximity.
+        // Strategy: Sort by position, then filter neighbors.
+        
+        const sorted = [...items].sort((a, b) => {
+            if (Math.abs(a.y - b.y) < 1) return a.x - b.x;
+            return a.y - b.y;
+        });
+
+        const unique = [sorted[0]];
+        for (let i = 1; i < sorted.length; i++) {
+            const prev = unique[unique.length - 1];
+            const curr = sorted[i];
+            
+            // Logic: Identical text AND very close position
+            // Distance threshold: very small, e.g., < 2px or < 10% of font height
+            const dist = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+            const isClose = dist < (Math.max(curr.fontHeight, prev.fontHeight) * 0.2) || dist < 2.0;
+            
+            if (curr.str === prev.str && isClose) {
+                continue; // Skip duplicate
+            }
+            unique.push(curr);
+        }
+        return unique;
+    }
+
+    // --- 高級版面分析引擎 ---
+    class AdvancedLayoutEngine {
+        constructor(items, pageWidth) {
+            this.items = items;
+            this.pageWidth = pageWidth;
+        }
+
+        process() {
+            // 1. Y-Axis Bucket Sort (Line Detection)
+            const lines = this.groupIntoLines(this.items);
+
+            // 2. Sort lines vertically
+            lines.sort((a, b) => a.y - b.y);
+
+            // 3. Process blocks of lines to detect tables or paragraphs
+            let result = "";
+            let currentBlock = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                currentBlock.push(lines[i]);
+                
+                // Determine if we should process the current block (e.g., gap in Y or end of page)
+                const nextLine = lines[i+1];
+                const isGap = nextLine && (nextLine.y - lines[i].y > lines[i].avgHeight * 2.5);
+                
+                if (isGap || !nextLine) {
+                    // Process this block
+                    if (this.isTableBlock(currentBlock)) {
+                        result += this.renderMarkdownTable(currentBlock) + "\n\n";
+                    } else {
+                        result += this.renderParagraphs(currentBlock) + "\n";
+                    }
+                    currentBlock = [];
+                }
+            }
+            return result;
+        }
+
+        groupIntoLines(items) {
+            const lines = [];
+            // Sort items by Y first to help grouping
+            items.sort((a, b) => a.y - b.y);
+
+            items.forEach(item => {
+                // Find a line that matches this item's Y within tolerance
+                const match = lines.find(l => Math.abs(l.y - item.y) < Math.min(l.avgHeight, item.fontHeight) * 0.5);
+                if (match) {
+                    match.items.push(item);
+                    // Update average Y and height
+                    match.y = (match.y * match.count + item.y) / (match.count + 1);
+                    match.avgHeight = (match.avgHeight * match.count + item.fontHeight) / (match.count + 1);
+                    match.count++;
+                } else {
+                    lines.push({
+                        y: item.y,
+                        avgHeight: item.fontHeight,
+                        count: 1,
+                        items: [item]
+                    });
+                }
+            });
+
+            // Sort items within each line by X
+            lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+            return lines;
+        }
+
+        isTableBlock(lines) {
+            // Heuristic: If multiple lines have distinct, aligned gaps, it's likely a table.
+            if (lines.length < 3) return false;
+
+            // Compute histogram of X start/end positions? 
+            // Simpler: Check for "Rivers" of whitespace.
+            // 1. Flatten all items in block
+            // 2. Project onto X-axis. 
+            // If we find > 2 distinct clusters of text separated by empty vertical bands, it's a table.
+            
+            const projection = new Array(Math.ceil(this.pageWidth)).fill(0);
+            lines.forEach(line => {
+                line.items.forEach(it => {
+                    const start = Math.floor(it.x);
+                    const end = Math.floor(it.x + it.w);
+                    for (let k = start; k < end; k++) {
+                        if (k >= 0 && k < projection.length) projection[k] = 1;
+                    }
+                });
+            });
+
+            // Count whitespace gaps of significant width
+            let gaps = 0;
+            let inGap = false;
+            let gapWidth = 0;
+            const minGap = 10; // pixels
+
+            // Trim left/right margin
+            let firstContent = projection.indexOf(1);
+            let lastContent = projection.lastIndexOf(1);
+            
+            if (firstContent === -1) return false;
+
+            for (let i = firstContent; i <= lastContent; i++) {
+                if (projection[i] === 0) {
+                    if (!inGap) inGap = true;
+                    gapWidth++;
+                } else {
+                    if (inGap) {
+                        if (gapWidth > minGap) gaps++;
+                        inGap = false;
+                        gapWidth = 0;
+                    }
+                }
+            }
+            
+            // If we have at least 2 internal gaps (3 columns), treat as table
+            return gaps >= 2;
+        }
+
+        renderMarkdownTable(lines) {
+            // 1. Detect columns boundaries
+            const columns = this.detectColumnBoundaries(lines);
+            if (columns.length < 2) return this.renderParagraphs(lines); // Fallback
+
+            let md = "";
+            
+            // Header row? Assume first line is header for simplicity, or just output data
+            // We'll generate a generic header if we can't detect bold/header style
+            
+            lines.forEach((line, idx) => {
+                const rowCells = new Array(columns.length).fill("");
+                
+                line.items.forEach(item => {
+                    // Find which column this item belongs to
+                    const mid = item.x + item.w / 2;
+                    let colIdx = -1;
+                    for(let c = 0; c < columns.length; c++) {
+                        if (mid >= columns[c].start && mid <= columns[c].end) {
+                            colIdx = c;
+                            break;
+                        }
+                    }
+                    // If between columns, assign to closest
+                    if (colIdx === -1) {
+                        // Logic to find closest column
+                        let minD = Infinity;
+                        columns.forEach((col, c) => {
+                            const d = Math.abs(mid - (col.start + col.end)/2);
+                            if (d < minD) { minD = d; colIdx = c; }
+                        });
+                    }
+                    
+                    rowCells[colIdx] += (rowCells[colIdx] ? " " : "") + item.str;
+                });
+
+                // Clean cells
+                const cleanRow = rowCells.map(c => UniversalTextNormalizer.normalize(c).replace(/\n/g, " "));
+                
+                md += "| " + cleanRow.join(" | ") + " |\n";
+                
+                // Add separator after first row
+                if (idx === 0) {
+                    md += "|" + columns.map(() => "---").join("|") + "|\n";
+                }
+            });
+            
+            return md;
+        }
+
+        detectColumnBoundaries(lines) {
+            // Similar to XY-Cut projection
+            const projection = new Array(Math.ceil(this.pageWidth)).fill(0);
+            lines.forEach(line => {
+                line.items.forEach(it => {
+                    const s = Math.floor(it.x);
+                    const e = Math.floor(it.x + it.w);
+                    for(let k=s; k<e; k++) if(k>=0 && k<projection.length) projection[k] = 1;
+                });
+            });
+
+            const cols = [];
+            let inCol = false;
+            let start = 0;
+            
+            // Scan projection to find content blocks
+            for(let i=0; i<projection.length; i++) {
+                if(projection[i] === 1) {
+                    if(!inCol) { start = i; inCol = true; }
+                } else {
+                    if(inCol) {
+                        cols.push({ start, end: i });
+                        inCol = false;
+                    }
+                }
+            }
+            if (inCol) cols.push({ start, end: projection.length });
+            
+            // Merge small gaps? (Optional)
+            return cols;
+        }
+
+        renderParagraphs(lines) {
+            let text = "";
+            lines.forEach(line => {
+                let lineStr = "";
+                let lastItem = null;
+                line.items.forEach(item => {
+                    if (lastItem) {
+                        // Simple logic for space
+                        if (item.x - (lastItem.x + lastItem.w) > item.fontHeight * 0.2) {
+                            lineStr += " ";
+                        }
+                    }
+                    lineStr += item.str;
+                    lastItem = item;
+                });
+                text += assembleLinesAdaptive([{ str: lineStr, fontHeight: line.avgHeight, x:0, y:0, w:0, h:0 }]) + "\n";
+            });
+            // Use existing normalizer to clean up
+            return UniversalTextNormalizer.normalize(text);
         }
     }
 
