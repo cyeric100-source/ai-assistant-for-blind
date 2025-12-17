@@ -81,7 +81,6 @@
         }
 
         body {
-            /* 修正：字型退路，確保多國語言顯示 */
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -222,15 +221,13 @@
         .message.error { border-left-color: #ff0000; background: #330000; }
         .message.error h1.msg-heading { color: #ff5555; }
 
-        /* 修正：排版渲染引擎最佳化 */
         .markdown-body { 
             line-height: 1.7; 
             overflow-wrap: break-word; 
-            word-break: break-word; /* 針對無空格語言(如泰文、長網址) */
-            unicode-bidi: isolate; /* 確保混合語文方向隔離 */
-            text-align: justify; /* 讓長段落排版更整齊 */
+            word-break: break-word; 
+            unicode-bidi: isolate; 
+            text-align: justify; 
         }
-        /* 針對 RTL 語系自動調整方向 */
         .markdown-body[dir="auto"] { text-align: start; }
 
         .markdown-body h1, .markdown-body h2 { color: #88CCFF; border-bottom: none; margin-top: 1.5em; }
@@ -563,22 +560,23 @@
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
             // 3. Smart CJK Joiner: Remove spaces between CJK chars (Handle "填   充   物")
+            // CRITICAL FIX: Use [ \t]+ instead of \s+ to PRESERVE NEWLINES (\n)
             // Range includes: Han, Kana, Hangul, Fullwidth Punctuation
             const cjk = "[\u2e80-\u9fff\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]";
-            const regexCJK = new RegExp(`(${cjk})\\s+(${cjk})`, 'g');
+            const regexCJK = new RegExp(`(${cjk})[ \\t]+(${cjk})`, 'g');
             // Run twice to handle "A B C" -> "AB C" -> "ABC" overlap issues in regex
             res = res.replace(regexCJK, "$1$2").replace(regexCJK, "$1$2");
 
             // 4. CJK - Punctuation Glue (Fix "物 、" -> "物、")
             // Handle CJK char followed by half-width punct with space
-            res = res.replace(new RegExp(`(${cjk})\\s+([,.;:?!])`, 'g'), "$1$2");
+            res = res.replace(new RegExp(`(${cjk})[ \\t]+([,.;:?!])`, 'g'), "$1$2");
             // Handle space around CJK punctuation (Fullwidth)
-            res = res.replace(/\s+([、，。：；？！])/g, "$1"); 
-            res = res.replace(/([、，。：；？！])\s+/g, "$1");
+            res = res.replace(/[ \t]+([、，。：；？！])/g, "$1"); 
+            res = res.replace(/([、，。：；？！])[ \t]+/g, "$1");
 
             // 5. Smart Number Joiner: Fix "2025 . 11" -> "2025.11"
-            res = res.replace(/(\d+)\s+(\.)\s+(\d+)/g, "$1$2$3");
-            res = res.replace(/(\d+)\s+(\.)/g, "$1$2"); 
+            res = res.replace(/(\d+)[ \t]+(\.)[ \t]+(\d+)/g, "$1$2$3");
+            res = res.replace(/(\d+)[ \t]+(\.)/g, "$1$2"); 
 
             // 6. Paragraph Reconstruction
             const lines = res.split("\n");
@@ -1144,9 +1142,10 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 const { pageIndex, items, height } = pageData;
                 
                 // Filter items based on noise patterns
+                // REDUCED MARGIN: Only analyze top 5% and bottom 5%
                 const filteredItems = items.filter(item => {
-                    const isTop = item.y < height * 0.15; // Top 15%
-                    const isBottom = item.y > height * 0.85; // Bottom 15%
+                    const isTop = item.y < height * 0.05; // Top 5%
+                    const isBottom = item.y > height * 0.95; // Bottom 5%
                     
                     if (isTop || isBottom) {
                         const normalizedStr = item.str.trim().replace(/\d+/g, '#');
@@ -1180,7 +1179,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     pageStr += assembleLinesAdaptive(columnItems) + "\n";
                 }
 
-                fullText += `## [Page ${pageIndex}]\n${pageStr}\n\n`;
+                fullText += `## [Page ${pageIndex}]\n\n${pageStr}\n\n`;
             }
 
             return fullText;
@@ -1199,8 +1198,9 @@ Translate the input text fully and fluently. Fix broken lines.`;
         pages.forEach(page => {
             const { items, height } = page;
             items.forEach(item => {
-                const isTop = item.y < height * 0.15;
-                const isBottom = item.y > height * 0.85;
+                // REDUCED MARGIN: Only analyze top 5% and bottom 5%
+                const isTop = item.y < height * 0.05;
+                const isBottom = item.y > height * 0.95;
                 
                 if (isTop || isBottom) {
                     // Normalize: Replace numbers with hash to handle "Page 1", "Page 2"
@@ -1234,8 +1234,9 @@ Translate the input text fully and fluently. Fix broken lines.`;
             }
         });
 
-        const searchStart = Math.floor(bins.length * 0.2);
-        const searchEnd = Math.floor(bins.length * 0.8);
+        // Search wider range: 10% to 90% (Improved Sensitivity)
+        const searchStart = Math.floor(bins.length * 0.1);
+        const searchEnd = Math.floor(bins.length * 0.9);
         
         let gaps = [];
         let currentGap = { start: -1, width: 0 };
@@ -1252,7 +1253,8 @@ Translate the input text fully and fluently. Fix broken lines.`;
             }
         }
 
-        const splitThreshold = bins.length * 0.02;
+        // Threshold: 1% of page width or ~5 buckets (10px) (Improved Sensitivity)
+        const splitThreshold = Math.max(bins.length * 0.01, 5);
         const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
 
         if (validGap.width > splitThreshold) {
