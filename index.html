@@ -169,7 +169,7 @@
 </footer>
 
 <script>
-    // --- 【修正 1 & 5】通用文字正規化與頁碼處理 ---
+    // --- UniversalTextNormalizer: 核心正規化引擎 ---
     class UniversalTextNormalizer {
         static getScriptType(char) {
             if (!char) return 'other';
@@ -183,7 +183,6 @@
         static normalize(text, mode = 'pdf') {
             if (!text) return "";
             let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-            // 處理跨行連字符
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
 
             const lines = res.split("\n");
@@ -192,8 +191,6 @@
             for (let i = 0; i < lines.length; i++) {
                 let curr = lines[i].trim();
                 if (curr.length === 0) { processed += "\n\n"; continue; }
-                
-                // 表格標記保護
                 const isTableLine = (line) => line && (line.startsWith('|') || line.includes('|'));
 
                 if (i < lines.length - 1) {
@@ -202,19 +199,15 @@
                         processed += curr + "\n";
                         continue;
                     }
-                    
-                    // AI 模式保留列表結構
                     if (mode === 'ai' && (/^[-*•#\d.]/.test(next) || /^[-*•#]/.test(curr))) {
                         processed += curr + "\n";
                         continue;
                     }
-
                     let lastChar = curr.slice(-1);
                     let nextChar = next.charAt(0);
                     const typeA = this.getScriptType(lastChar);
                     const typeB = this.getScriptType(nextChar);
 
-                    // 智能黏合：CJK 與英數混排不加空格
                     if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) {
                         processed += curr; 
                     } else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
@@ -227,7 +220,6 @@
                 }
             }
 
-            // 清理內部破碎空格
             processed = processed.replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, "$1$2");
             processed = processed.replace(/([\u4e00-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
             processed = processed.replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fff])/g, "$1$2");
@@ -236,7 +228,7 @@
         }
     }
 
-    // --- 【修正 1, 2, 3, 4】進階版面解析引擎 (幾何投影法) ---
+    // --- 【修正 1 & 2】幾何預處理與判定決策樹 ---
     class AdvancedLayoutEngine {
         constructor(items, pageWidth) { 
             this.items = items; 
@@ -244,7 +236,6 @@
         }
 
         process() {
-            // 1. 3D 片段合併 (水平黏合 & 座標去重)
             const cleanedItems = this.perform3DMerge(this.items);
             const lines = this.groupIntoLines(cleanedItems);
             lines.sort((a, b) => a.y - b.y);
@@ -254,7 +245,6 @@
             for (let i = 0; i < lines.length; i++) {
                 currentBlock.push(lines[i]);
                 const nextLine = lines[i+1];
-                // 段落邊界偵測 (大於 1.8 倍行高視為新區塊)
                 if (!nextLine || (nextLine.y - lines[i].y > lines[i].avgHeight * 1.8)) {
                     if (this.isTableBlock(currentBlock)) { 
                         result += this.renderMarkdownTable(currentBlock) + "\n\n"; 
@@ -269,19 +259,14 @@
 
         perform3DMerge(items) {
             if (items.length === 0) return [];
-            // 按座標排序
             items.sort((a, b) => Math.abs(a.y - b.y) < 2 ? a.x - b.x : a.y - b.y);
-            
             const merged = [];
             let current = items[0];
-
             for (let i = 1; i < items.length; i++) {
                 const next = items[i];
                 const isSameRow = Math.abs(next.y - current.y) < current.fontHeight * 0.3;
-                const horizontalGap = next.x - (current.x + current.w);
-                
-                // 如果距離極近 (<15% 字體大小) 且在同一行，強制合併
-                if (isSameRow && horizontalGap < current.fontHeight * 0.15) {
+                const hGap = next.x - (current.x + current.w);
+                if (isSameRow && hGap < current.fontHeight * 0.15) {
                     current.str += next.str;
                     current.w = (next.x + next.w) - current.x;
                 } else {
@@ -309,53 +294,54 @@
         }
 
         isTableBlock(lines) {
-            if (lines.length < 2) return false;
+            if (lines.length < 3) return false;
 
-            // A. 垂直投影校驗 (Vertical Gutter Check)
-            // 計算整塊區域中，是否存在垂直方向一致的空白間隙
-            const projection = new Array(Math.ceil(this.pageWidth)).fill(0);
-            lines.forEach(line => {
-                line.items.forEach(it => {
-                    for (let x = Math.floor(it.x); x < Math.floor(it.x + it.w); x++) {
-                        if (x >= 0 && x < projection.length) projection[x] = 1;
-                    }
-                });
-            });
-
-            let gutters = 0;
-            let inGutter = false;
-            let currentGutterWidth = 0;
-            for (let x = 0; x < projection.length; x++) {
-                if (projection[x] === 0) {
-                    if (!inGutter) inGutter = true;
-                    currentGutterWidth++;
-                } else {
-                    if (inGutter && currentGutterWidth > 15) gutters++; // 間隙需大於 15px
-                    inGutter = false;
-                    currentGutterWidth = 0;
-                }
-            }
-
-            // B. 語義過濾 (Word Count Filter)
-            let totalWords = 0;
-            let totalItems = 0;
-            lines.forEach(l => {
-                l.items.forEach(it => {
-                    totalWords += it.str.trim().split(/\s+/).length;
-                    totalItems++;
-                });
-            });
-            const avgWordsPerCell = totalWords / totalItems;
-
-            // C. 段落優先權與寬度校驗
-            const maxWidth = Math.max(...lines.map(l => {
+            // 獲取區塊邊界
+            const blockLeft = Math.min(...lines.map(l => l.items[0].x));
+            const blockRight = Math.max(...lines.map(l => {
                 const last = l.items[l.items.length-1];
-                return last ? (last.x + last.w) - l.items[0].x : 0;
+                return last.x + last.w;
             }));
-            const isFullWidth = maxWidth > this.pageWidth * 0.85;
+            const blockWidth = blockRight - blockLeft;
 
-            // 最終判定邏輯：有至少一個垂直通道，且單元格內容不長，且不是超長段落
-            return gutters >= 1 && avgWordsPerCell < 12 && !isFullWidth;
+            // 1. 計算間隙與覆蓋率 (Coverage Ratio)
+            let tableScore = 0;
+            lines.forEach(line => {
+                let textWidth = 0;
+                let validGapsInLine = 0;
+                for (let i = 0; i < line.items.length; i++) {
+                    textWidth += line.items[i].w;
+                    if (i > 0) {
+                        const gap = line.items[i].x - (line.items[i-1].x + line.items[i-1].w);
+                        // 間隙/高度比判定：需大於字體高度的 1.5 倍
+                        if (gap > line.avgHeight * 1.5) validGapsInLine++;
+                    }
+                }
+                const coverage = textWidth / blockWidth;
+                // 如果覆蓋率極高 (>85%)，視為段落，降低分數
+                if (coverage < 0.85 && validGapsInLine >= 1) tableScore++;
+            });
+
+            // 2. 幾何預處理層：多行座標比對系統 (Gutter Intersection)
+            // 我們尋找是否存在於多行中垂直位置一致的「通道」
+            const commonGaps = new Array(Math.ceil(this.pageWidth)).fill(0);
+            lines.forEach(line => {
+                for (let i = 1; i < line.items.length; i++) {
+                    const start = Math.floor(line.items[i-1].x + line.items[i-1].w);
+                    const end = Math.floor(line.items[i].x);
+                    if (end - start > line.avgHeight * 1.5) {
+                        for (let x = start; x < end; x++) {
+                            if (x >= 0 && x < commonGaps.length) commonGaps[x]++;
+                        }
+                    }
+                }
+            });
+
+            // 檢查是否有垂直貫通至少 60% 行數的通道
+            const hasVerticalRiver = commonGaps.some(count => count >= lines.length * 0.6);
+
+            // 綜合決策：必須有垂直通道且大多數行具備表格特徵
+            return hasVerticalRiver && (tableScore / lines.length > 0.5);
         }
 
         renderMarkdownTable(lines) {
@@ -369,7 +355,6 @@
         }
 
         renderParagraphs(lines) {
-            // 段落渲染：保留單行內的自然間隙
             return lines.map(l => {
                 let rowText = "";
                 for (let i = 0; i < l.items.length; i++) {
@@ -384,7 +369,7 @@
         }
     }
 
-    // --- 【修正 5】PDF 處理與標籤注入流 ---
+    // --- 【修正 3】分段隔離保護流程 ---
     async function performAIProcessing(file, sourceMode, textData, needTranslate) {
         const controller = new AbortController(); 
         let pagesContent = [];
@@ -392,30 +377,30 @@
         if (sourceMode === "image") {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            updateStatusBar(`OCR 處理中 (共 ${pdf.numPages} 頁)...`, "busy");
-            
+            updateStatusBar(`OCR 處理中...`, "busy");
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const viewport = page.getViewport({ scale: 2.0 });
                 const canvas = document.createElement('canvas');
-                canvas.width = viewport.width; canvas.height = viewport.height;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-                
-                const imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-                const rawText = await callAI(document.getElementById('provider-select').value, "Transcription.", imgBase64, "image/jpeg", controller.signal, null, null, DEFAULT_OCR_PROMPT);
-                pagesContent.push(UniversalTextNormalizer.normalize(rawText, 'ai'));
+                const b64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                const raw = await callAI(document.getElementById('provider-select').value, "Transcription.", b64, "image/jpeg", controller.signal, null, null, DEFAULT_OCR_PROMPT);
+                // 先進行正規化排版
+                pagesContent.push(UniversalTextNormalizer.normalize(raw, 'ai'));
                 canvas.remove();
             }
         } else {
-            // 文字版分頁提取 (此時標記僅用於分割)
+            // 文字版提取：先按分隔標誌切分，再逐頁進行排版與正規化
             const parts = textData.split(/\[PAGE_SEP_(\d+)\]/);
             for (let i = 1; i < parts.length; i += 2) {
                 const content = parts[i+1];
-                pagesContent.push(UniversalTextNormalizer.normalize(content, 'pdf'));
+                // 核心修正：先執行正規化與排版結構化
+                const normalized = UniversalTextNormalizer.normalize(content, 'pdf');
+                pagesContent.push(normalized);
             }
         }
 
-        // 最終顯示階段才注入 Markdown 標題，確保排版不受干擾
+        // 最終步驟：在已穩定排版的內容外圍注入標題標籤
         let finalOutput = pagesContent.map((c, i) => `## [Page ${i + 1}]\n\n${c}`).join('\n\n');
 
         if (needTranslate) {
@@ -426,8 +411,10 @@
             addMessage('assistant', finalOutput);
         }
         updateStatusBar("任務完成", "ready");
+        playAudioCue('success');
     }
 
+    // --- PDF 文字提取入口 ---
     async function extractTextFromPDF_Accurate(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -445,16 +432,17 @@
                     fontHeight: Math.abs(it.transform[3])
                 }));
                 const engine = new AdvancedLayoutEngine(items, viewport.width);
+                // 使用暫時分隔標記
                 output += `[PAGE_SEP_${i}]` + engine.process();
             }
             return output;
         } catch (e) { return null; }
     }
 
-    // --- 系統基礎邏輯 ---
-    const DEFAULT_CHAT_PROMPT = "你是一位專業助手，請用繁體中文回答。";
-    const DEFAULT_OCR_PROMPT = "請精確轉錄文字，保持原始分行。";
-    const DEFAULT_TRANSLATE_PROMPT = "請翻譯成繁體中文，保留 [Page X] 格式。";
+    // --- 基礎框架與 AI 通訊 ---
+    const DEFAULT_CHAT_PROMPT = "你是一位助手，請用繁體中文回答。";
+    const DEFAULT_OCR_PROMPT = "請精確轉錄文字。";
+    const DEFAULT_TRANSLATE_PROMPT = "請翻譯成繁體中文，保留 [Page X] 標記。";
     const PROVIDERS = {
         gemini: { models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
         openrouter: { models: ["google/gemini-2.0-flash-001", "openai/gpt-4o"] },
@@ -498,7 +486,7 @@
     async function callAI(p, txt, file, mime, sig, ovModel, ovKey, sys) {
         const k = ovKey || document.getElementById('api-key').value;
         const m = ovModel || currentActiveModelId;
-        if (!k) throw new Error("Need API Key");
+        if (!k) throw new Error("API Key Required");
         let url, body, headers = { 'Content-Type': 'application/json' };
         if (p === 'gemini') {
             url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
@@ -519,7 +507,7 @@
     }
 
     async function processPDFTool(file) {
-        updateStatusBar("正在處理...", "busy");
+        updateStatusBar("分析 PDF...", "busy");
         const raw = await extractTextFromPDF_Accurate(file);
         const needTrans = document.getElementById('pdf-translate').checked;
         if (!raw || raw.replace(/\s/g, '').length < 100) {
@@ -541,11 +529,18 @@
             const res = await callAI(document.getElementById('provider-select').value, txt, null, null, null, null, null, DEFAULT_CHAT_PROMPT);
             addMessage('assistant', res);
             document.getElementById('user-input').value = "";
-        } catch (e) { reportError("傳送失敗", e); }
+        } catch (e) { reportError("錯誤", e); }
         finally { updateStatusBar("就緒"); }
     }
 
     function resetConversation() { document.getElementById('chat-output').innerHTML = ""; }
+
+    function playAudioCue(type) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.1);
+    }
 
     window.addEventListener('pdfjs-loaded', () => {
         document.getElementById('pdf-start-btn').disabled = false;
