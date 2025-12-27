@@ -13,32 +13,51 @@
 
     <!-- 【核心設定】PDF.js v5.4.449 : 讀取本地 pdf-dist 資料夾 -->
     <script type="module">
+        // 【安全機制】本機執行檢測與鎖定
         if (window.location.protocol === 'file:') {
             document.documentElement.innerHTML = `
                 <body style="background:#000; color:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; margin:0; font-family:sans-serif;">
                     <h1 style="color:yellow; font-size:2.5rem; text-align:center;">⚠️ 環境錯誤</h1>
                     <p style="font-size:1.5rem; text-align:center; max-width:800px; line-height:1.6;">
-                        為了確保功能正常，本程式不支援在本機直接開啟。<br>
-                        請上傳至 GitHub Pages 或線上網址開啟使用。
+                        為了確保功能正常，本程式<strong>不支援</strong>在本機 (Local) 直接開啟。<br><br>
+                        請將此專案上傳至 <strong>GitHub</strong>，並透過 GitHub Pages 或線上網址開啟使用。
                     </p>
                 </body>
             `;
-            throw new Error("Local execution blocked.");
+            throw new Error("Local execution blocked. Please run on a server.");
         }
 
+        // 設定本地路徑 (基於 GitHub Desktop 上傳結構)
         const PDF_BASE = './pdf-dist/pdf.mjs';
         const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
         async function initPdfSystem() {
             try {
+                // 【安全機制】檢測 PDF 檔案結構
                 const response = await fetch(PDF_BASE, { method: 'HEAD' });
-                if (!response.ok) throw new Error("Missing pdf-dist");
+                if (!response.ok) {
+                    throw new Error(`找不到核心檔案 (Status: ${response.status}) - 請確認 GitHub 專案中是否有 pdf-dist 資料夾`);
+                }
+
+                // 1. 載入主程式庫
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
+
+                // 2. 設定 Worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+                
+                console.log("PDF System Initialized (Global Script Support)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
+
             } catch (e) {
-                window.reportError("PDF 核心載入失敗！", e);
+                console.error("PDF Init Failed:", e);
+                window.reportError("PDF 核心載入失敗！\n請檢查您的 GitHub 儲存庫根目錄下，是否已正確包含 'pdf-dist' 資料夾。", e);
+                const btn = document.getElementById('pdf-start-btn');
+                if (btn) {
+                    btn.innerText = "⚠️ 錯誤：找不到 pdf-dist 資料夾";
+                    btn.classList.add('danger');
+                    btn.disabled = true;
+                }
             }
         }
         initPdfSystem();
@@ -48,54 +67,175 @@
         :root {
             --bg-color: #000000;
             --text-color: #FFFFFF;
-            --accent-color: #FFFF00;
-            --user-header-color: #0088ff;
-            --ai-header-color: #FFFF00;
+            --accent-color: #FFFF00;      /* 黃色高亮 */
+            --user-header-color: #0088ff; /* 用戶標題色 */
+            --ai-header-color: #FFFF00;   /* AI 標題色 */
             --border-color: #555;
             --input-bg: #1A1A1A;
             --button-bg: #FFFF00;
             --button-text: #000000;
             --status-bg: #222;
+            --tool-bg: #112233;
+            --active-tab-bg: #004488;
+            --active-tab-text: #ffffff;
         }
 
         body {
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
             font-size: 1.2rem; line-height: 1.6;
             padding-top: 60px;
+            -webkit-user-select: none;
             user-select: none;
         }
         
-        .message-area { -webkit-user-select: text; user-select: text; }
-        .container { max-width: 900px; margin: 0 auto; padding: 10px 10px 450px 10px; }
-        .app-title { font-size: 1.5rem; text-align: center; margin: 10px 0; color: #ccc; font-weight: bold; }
+        .message-area, #system-prompt, #user-input, input, #error-log-area {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 10px 10px 450px 10px;
+        }
+
+        .app-title { 
+            font-size: 1.5rem; text-align: center; margin: 10px 0; color: #ccc; font-weight: bold;
+        }
         
+        details h2 { 
+            font-size: 1.4rem; color: #ccc; 
+            border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 10px; 
+            display: inline-block;
+        }
+
         input, select, textarea {
             width: 100%; padding: 12px; margin-top: 5px; margin-bottom: 10px;
             background: var(--input-bg); border: 2px solid var(--border-color);
             color: var(--text-color); font-size: 1.1rem; border-radius: 6px; box-sizing: border-box;
         }
 
+        #system-prompt, #error-log-area {
+            min-height: 150px;
+            resize: vertical;
+            overflow-y: auto;
+            font-family: monospace;
+            line-height: 1.4;
+        }
+        
+        *:focus-visible { outline: 4px solid var(--accent-color) !important; }
+
         button {
             background-color: var(--button-bg); color: var(--button-text);
             border: 2px solid #fff; padding: 12px; font-size: 1.1rem; font-weight: bold;
-            border-radius: 8px; margin-top: 5px; cursor: pointer;
+            border-radius: 8px; margin-top: 5px; cursor: pointer; touch-action: manipulation;
         }
-        button:disabled { filter: grayscale(100%); opacity: 0.7; }
+        button:disabled { filter: grayscale(100%); opacity: 0.7; cursor: not-allowed; }
+        button.secondary { background-color: #333; color: #fff; border-color: #777; }
+        
+        button.mini-copy-btn {
+            background-color: #333; color: #fff; border: 1px solid #777;
+            padding: 6px 12px; font-size: 0.9rem; margin-top: 10px;
+            width: auto; display: inline-block;
+        }
+        button.mini-copy-btn:hover { background-color: #555; }
+        
+        button.danger {
+            background-color: #550000; color: #ffcccc; border-color: #ff4444;
+        }
+
+        button.tool-btn {
+            background-color: #0066cc; color: white; border: 2px solid #44aaff;
+        }
+        
+        button.recording {
+            background-color: #ff3333 !important; 
+            color: #ffffff !important; 
+            border-color: #ffaaaa !important;
+            transform: scale(0.98);
+            box-shadow: inset 0 0 10px #000;
+        }
+        
+        .assign-btn-group {
+            display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;
+        }
+        .assign-btn-group button {
+            flex: 1; font-size: 1rem; padding: 8px; margin-top: 0; min-width: 120px;
+            background-color: #224466; color: #fff; border: 1px solid #4488cc;
+        }
+        .assign-btn-group button.reset {
+            background-color: #442222; border-color: #cc6666;
+        }
+
+        #config-status-display {
+            background: #1a1a1a; border: 1px solid #444; padding: 10px; 
+            border-radius: 6px; margin-bottom: 15px; font-size: 0.95rem; color: #aaa;
+        }
+        #config-status-display strong { color: #88ccff; }
+        #config-status-display .highlight { color: var(--accent-color); }
+
+        .prompt-tabs {
+            display: flex; gap: 2px; margin-top: 15px;
+        }
+        .prompt-tabs button {
+            flex: 1; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+            margin-top: 0; border-bottom: none; background: #333; color: #aaa;
+            font-size: 1rem; padding: 10px 5px;
+        }
+        .prompt-tabs button.active {
+            background: var(--active-tab-bg); color: var(--active-tab-text);
+            border-color: #fff; font-weight: bold;
+        }
+
+        details { border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; margin-bottom: 10px; background: #111; }
+        summary { cursor: pointer; padding: 5px; }
+        
+        .pdf-tool-group {
+            background: var(--tool-bg); border: 2px solid #005588;
+        }
+        .pdf-tool-group h2 { color: #88ccff; border-bottom-color: #005588; }
+        
+        .message-area { min-height: 100px; padding-bottom: 20px; }
         
         .message {
             background: #111; padding: 15px; margin-bottom: 25px;
             border-left: 5px solid var(--border-color);
-            overflow-wrap: break-word;
+            overflow-wrap: break-word; word-wrap: break-word; word-break: break-word;
         }
-        .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
-        .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
+        .message:focus { outline: none; border-left: 8px solid var(--accent-color); background: #222; }
 
-        .markdown-body h2 { color: #88CCFF; margin-top: 1.5em; border-bottom: 1px solid #333; padding-bottom: 5px; }
-        .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-        .markdown-body th, .markdown-body td { border: 1px solid #555; padding: 8px; text-align: left; }
+        .message h1.msg-heading {
+            font-size: 1.4rem; margin: 0 0 10px 0; padding-bottom: 5px;
+            border-bottom: 1px dashed #444; line-height: 1.3;
+        }
+
+        .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
+        .message.user h1.msg-heading { color: var(--user-header-color); }
+        
+        .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
+        .message.assistant h1.msg-heading { color: var(--ai-header-color); }
+
+        .message.error { border-left-color: #ff0000; background: #330000; }
+        .message.error h1.msg-heading { color: #ff5555; }
+
+        .markdown-body { 
+            line-height: 1.7; 
+            overflow-wrap: break-word; 
+            word-break: break-word;
+            unicode-bidi: isolate;
+        }
+        .markdown-body[dir="auto"] { text-align: start; }
+
+        .markdown-body h1, .markdown-body h2 { color: #88CCFF; border-bottom: none; margin-top: 1.5em; }
+        .markdown-body p { margin-bottom: 10px; white-space: pre-wrap; } 
+        .markdown-body pre { 
+            background: #222; padding: 10px; overflow-x: auto; 
+            border: 1px solid #444; white-space: pre; 
+        }
+        .markdown-body code { background: #333; padding: 2px 4px; word-break: break-all; }
 
         .controls-wrapper {
             position: fixed; bottom: 0; left: 0; right: 0;
@@ -103,450 +243,842 @@
             padding: 10px; z-index: 100;
         }
 
-        #status-bar {
+        .row { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-end; }
+        
+        .check-btn {
+            display: flex; align-items: center; justify-content: center;
+            background: #222; border: 1px solid #555; color: #fff;
+            padding: 10px; border-radius: 6px; flex: 1;
+            cursor: pointer; margin-top: 5px;
+            height: auto; min-height: 52px;
+        }
+        .check-btn input { width: 20px; height: 20px; margin: 0 8px 0 0; }
+
+        #user-input {
+            margin: 0; min-height: 80px; max-height: 200px;
+            resize: vertical; overflow-y: auto; flex: 1;
+            transition: border-color 0.2s;
+        }
+        #user-input.dragover { border-color: var(--accent-color) !important; background-color: #222; }
+
+        #status-bar-container {
             position: fixed; top: 0; left: 0; right: 0;
+            z-index: 2000; display: flex; flex-direction: column;
+        }
+        
+        #status-bar {
             background: var(--status-bg); color: #fff;
-            padding: 10px; text-align: center; font-weight: bold;
-            border-bottom: 2px solid var(--border-color); z-index: 2000;
+            padding: 10px; text-align: center;
+            font-weight: bold; font-size: 1.1rem;
+            border-bottom: 2px solid var(--border-color);
+            transition: background-color 0.3s;
+        }
+        
+        #visual-progress {
+            background: #333; color: #88ccff; font-size: 0.9rem; 
+            text-align: center; padding: 2px; border-bottom: 1px solid #444;
+            display: none; 
+        }
+        #visual-progress.active { display: block; }
+
+        #status-bar.ready { background: #004400; border-bottom-color: #00ff00; }
+        #status-bar.busy { background: #664400; border-bottom-color: #ffff00; }
+        #status-bar.error { background: #660000; border-bottom-color: #ff0000; }
+        #status-bar.recording { background: #aa0000; border-bottom-color: #ff0000; animation: pulse-status 1s infinite; }
+        
+        @keyframes pulse-status {
+             0% { background-color: #aa0000; }
+             50% { background-color: #ff0000; }
+             100% { background-color: #aa0000; }
         }
 
         .hidden { display: none !important; }
-        .row { display: flex; gap: 10px; margin-bottom: 8px; }
-        .check-btn { flex: 1; display: flex; align-items: center; background: #222; padding: 10px; border-radius: 6px; cursor: pointer; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+        
+        #custom-model-wrapper { margin-top: -5px; margin-bottom: 10px; }
+        .settings-subsection { border: 1px solid #444; padding: 10px; border-radius: 6px; margin: 10px 0; background: #222; }
+        .settings-subsection h3 { margin: 0 0 10px 0; font-size: 1.1rem; color: var(--accent-color); }
+        .export-actions { margin-bottom: 20px; display: flex; gap: 10px; }
+        
+        .cors-notice { background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.95rem; border: 1px solid #ffaa00; }
     </style>
 </head>
 <body>
 
-<div id="status-bar" role="status">系統初始化中...</div>
+<div id="status-bar-container">
+    <div id="status-bar" role="status" aria-live="polite" tabindex="-1">系統初始化中...</div>
+    <div id="visual-progress" aria-hidden="true"></div>
+</div>
 
 <div class="container">
     <h1 class="app-title">AI 視障助理 (2025 全能排版終極版)</h1>
 
     <details id="settings-area">
-        <summary><h2>設定</h2></summary>
-        <div>
-            <label>AI 服務商:</label>
-            <select id="provider-select" onchange="handleProviderChange()">
-                <option value="gemini">Google Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="openai">OpenAI</option>
-            </select>
-            <label>API Key:</label>
-            <input type="password" id="api-key">
-            <label>模型選擇:</label>
-            <select id="model-select"></select>
-            <button type="button" onclick="saveSettings()">儲存設定</button>
-        </div>
-    </details>
+        <summary role="button" aria-expanded="false" id="settings-summary" aria-keyshortcuts="Alt+Shift+S">
+            <h2>設定 (Alt+Shift+S)</h2>
+        </summary>
+        
+        <div style="margin-top: 15px;">
+            <div class="cors-notice">
+                <strong>⚠️ 連線提示 (2025)：</strong> 
+                本程式使用本地核心處理 PDF，連線更穩定。推薦使用 <strong>Google Gemini</strong> 或 <strong>OpenRouter</strong> 進行 AI 對話。
+            </div>
 
-    <details open style="background:#112233; border:2px solid #005588; padding:10px; border-radius:8px; margin-top:10px;">
-        <summary><h2 style="display:inline; color:#88ccff;">PDF 智能閱讀工具箱</h2></summary>
-        <div style="margin-top:15px;">
-            <input type="file" id="pdf-tool-input" class="hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
-            <button type="button" id="pdf-start-btn" style="width:100%;" onclick="document.getElementById('pdf-tool-input').click()" disabled>📄 選擇 PDF 進行完整閱讀</button>
-            <div class="row" style="margin-top:10px;">
-                <label class="check-btn"><input type="checkbox" id="pdf-translate"> <span>翻譯成繁體中文</span></label>
+            <label for="provider-select">主要 AI 服務商:</label>
+            <select id="provider-select" onchange="handleProviderChange()">
+                <option value="gemini">Google Gemini (推薦 - 穩定快速)</option>
+                <option value="openrouter">OpenRouter (萬用中轉 - 推薦)</option>
+                <option value="openai">OpenAI (可能需 Proxy)</option>
+                <option value="groq">Groq (可能需 Proxy)</option>
+                <option value="mistral">Mistral AI</option>
+                <option value="perplexity">Perplexity</option>
+            </select>
+
+            <label for="api-key">主要 API Key:</label>
+            <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
+            
+            <label for="model-filter-input">篩選模型 (即時搜尋):</label>
+            <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, pro)..." oninput="handleModelFilter()">
+
+            <label for="model-select">模型選擇 (2025 Stable):</label>
+            <div class="row" style="margin-bottom: 10px;">
+                <select id="model-select" style="margin-bottom:0;" onchange="handleModelSelectChange()"></select>
+                <button type="button" id="refresh-btn" class="secondary" style="width: auto; margin-top:0;" onclick="fetchOnlineModels()" title="從網路更新模型清單">更新</button>
+            </div>
+            
+            <div id="custom-model-wrapper" class="hidden">
+                <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+            </div>
+
+            <div class="settings-subsection">
+                <h3>分工設定 (Task Assignment)</h3>
+                <div class="assign-btn-group">
+                    <button type="button" onclick="setSpecificConfig('ocr')">設為 OCR PDF 專用</button>
+                    <button type="button" onclick="setSpecificConfig('translate')">設為 翻譯 PDF 專用</button>
+                    <button type="button" class="reset" onclick="clearSpecificConfigs()">重置為跟隨主要設定</button>
+                </div>
+                <div id="config-status-display" aria-live="polite">目前設定載入中...</div>
+            </div>
+
+            <div id="openrouter-settings" class="hidden settings-subsection">
+                <h3>OpenRouter 搜尋設定</h3>
+                <label class="check-btn">
+                    <input type="checkbox" id="openrouter-web-search">
+                    <span>啟用聯網搜尋 (Web Search)</span>
+                </label>
+            </div>
+            
+            <label class="check-btn" style="flex:none; width:auto; margin-bottom: 10px;">
+                <input type="checkbox" id="enter-to-send" checked>
+                <span>按 Enter 鍵傳送 (取消勾選則 Enter 為換行)</span>
+            </label>
+
+            <div class="settings-subsection">
+                <h3>語音輸入設定</h3>
+                <label for="voice-engine">語音辨識引擎:</label>
+                <select id="voice-engine" onchange="saveVoiceSettings()">
+                    <option value="browser">瀏覽器原生 (免費，對講機模式)</option>
+                    <option value="openai">OpenAI Whisper (高準確，需付費)</option>
+                    <option value="groq">Groq Whisper (極速，需 Key)</option>
+                </select>
+                <label for="voice-api-key">語音辨識專用 API Key (選填):</label>
+                <input type="password" id="voice-api-key" placeholder="若留空，將嘗試使用主要 API Key" autocomplete="off" onchange="saveVoiceSettings()">
+            </div>
+
+            <label for="timeout-setting">回應逾時 (秒):</label>
+            <input type="number" id="timeout-setting" value="120" min="5" step="5">
+
+            <label style="margin-top: 15px; display:block; font-weight:bold;">系統指令 (System Prompts):</label>
+            <div class="prompt-tabs">
+                <button type="button" id="tab-chat" class="active" onclick="switchPromptEditor('chat')">編輯: 一般對話</button>
+                <button type="button" id="tab-ocr" onclick="switchPromptEditor('ocr')">編輯: OCR 專用</button>
+                <button type="button" id="tab-translate" onclick="switchPromptEditor('translate')">編輯: 翻譯專用</button>
+            </div>
+            <textarea id="system-prompt" placeholder="在此輸入系統指令..."></textarea>
+            
+            <div class="settings-subsection" style="border-color: #550000; background: #220000;">
+                <h3>錯誤診斷日誌 (Debug Log)</h3>
+                <textarea id="error-log-area" readonly placeholder="系統錯誤將顯示於此..."></textarea>
+                <button type="button" onclick="copyErrorLog()">複製錯誤內容以回報</button>
+            </div>
+
+            <div class="row">
+                <button type="button" onclick="saveSettings()">儲存設定</button>
+                <button type="button" onclick="restoreDefaults()" class="secondary">恢復預設值</button>
+                <button type="button" onclick="showHelp()" class="secondary" style="background:#004488; color:white;">功能說明</button>
             </div>
         </div>
     </details>
 
-    <div id="chat-output" class="message-area"></div>
+    <details class="pdf-tool-group" open>
+        <summary role="button" aria-expanded="true">
+            <h2>PDF 智能閱讀工具箱 (OCR & 翻譯)</h2>
+        </summary>
+        <div style="margin-top: 15px;">
+            <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
+
+            <button type="button" id="pdf-start-btn" class="tool-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
+                📄 PDF 完整閱讀 (本地核心就緒)
+            </button>
+            <small style="display:block; margin: 5px 0 15px 0; color:#ccc;">
+                * 說明：優先使用本機語義提取（修復單字破碎與亂碼）。若失敗，自動轉為圖片 OCR。
+            </small>
+
+            <div class="row">
+                <label class="check-btn">
+                    <input type="checkbox" id="pdf-always-ai">
+                    <span>總是將 PDF 傳給 AI (跳過本機提取)</span>
+                </label>
+
+                <label class="check-btn">
+                    <input type="checkbox" id="pdf-translate">
+                    <span>翻譯成繁體中文 (OCR後翻譯)</span>
+                </label>
+            </div>
+        </div>
+    </details>
+
+    <main role="main">
+        <div id="chat-output" class="message-area"></div>
+        
+        <div class="export-actions">
+            <button type="button" id="copy-btn" class="secondary hidden" onclick="copyResult()" aria-keyshortcuts="Alt+Shift+C" style="flex:1;">
+                複製 (Alt+Shift+C)
+            </button>
+            <button type="button" id="export-txt-btn" class="secondary hidden" onclick="exportChat('txt')" aria-keyshortcuts="Alt+Shift+T" style="flex:1;">
+                匯出 TXT (Alt+Shift+T)
+            </button>
+            <button type="button" id="export-html-btn" class="secondary hidden" onclick="exportChat('html')" aria-keyshortcuts="Alt+Shift+H" style="flex:1;">
+                匯出 HTML (Alt+Shift+H)
+            </button>
+        </div>
+    </main>
 </div>
 
-<footer class="controls-wrapper">
+<footer class="controls-wrapper" role="region" aria-label="操作區">
     <form onsubmit="handleSubmit(event)">
         <div class="row">
-            <input type="file" id="file-input" class="hidden" onchange="handleFileSelect()">
-            <button type="button" onclick="document.getElementById('file-input').click()" style="flex:1;">選擇檔案</button>
-            <button type="button" onclick="resetConversation()" style="flex:1; background:#442222; color:white;">清除對話</button>
+            <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
+            
+            <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()" aria-keyshortcuts="Alt+Shift+U" style="flex:1;">
+                選擇檔案 (Alt+Shift+U)
+            </button>
+            
+            <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()" aria-keyshortcuts="Alt+Shift+N" style="flex:1;">
+                清除對話 (Alt+Shift+N)
+            </button>
+
+            <label class="check-btn" style="flex:1;">
+                <input type="checkbox" id="pause-send" aria-keyshortcuts="Alt+Shift+P">
+                <span>暫停傳送 (Alt+Shift+P)</span>
+            </label>
         </div>
+        
         <div class="row">
-            <button type="button" id="voice-btn" style="height:80px; width:100px;">按住說話</button>
-            <textarea id="user-input" placeholder="輸入訊息..." rows="3" style="flex:1;"></textarea>
-            <button type="submit" style="height:80px; width:80px;">傳送</button>
+            <button type="button" id="voice-btn" class="secondary" aria-keyshortcuts="Alt+Shift+V" style="width: auto; padding: 0 15px; height: 80px; margin:0; font-size: 1.2rem;" title="語音輸入 (按住不放說話)" aria-label="語音輸入 (按住不放說話)">
+                按住說話
+            </button>
+            
+            <textarea id="user-input" placeholder="輸入訊息... (可拖放檔案或 Ctrl+V)" aria-keyshortcuts="Alt+Shift+I" autocomplete="off" rows="3" aria-label="輸入訊息區"></textarea>
+            
+            <button type="submit" id="submit-btn" aria-keyshortcuts="Alt+Shift+K" style="width: 80px; height: 80px; margin:0;" title="發送 (Alt+Shift+K)">傳送</button>
         </div>
     </form>
 </footer>
 
 <script>
-    // --- UniversalTextNormalizer: 核心正規化引擎 ---
     class UniversalTextNormalizer {
         static getScriptType(char) {
             if (!char) return 'other';
             const code = char.charCodeAt(0);
-            if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0xAC00 && code <= 0xD7AF)) return 'cjk';
-            if ((code >= 0x0E00 && code <= 0x0E7F)) return 'sea';
-            if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A) || (code >= 0x0030 && code <= 0x0039)) return 'latin';
+            if ((code >= 0x4E00 && code <= 0x9FFF) || 
+                (code >= 0x3040 && code <= 0x309F) || 
+                (code >= 0x30A0 && code <= 0x30FF) || 
+                (code >= 0xAC00 && code <= 0xD7AF) ||
+                (code >= 0x3400 && code <= 0x4DBF)) return 'cjk';
+            if ((code >= 0x0E00 && code <= 0x0E7F) || (code >= 0x0E80 && code <= 0x0EFF) || (code >= 0x1780 && code <= 0x17FF) || (code >= 0x1000 && code <= 0x109F)) return 'sea';
+            if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0750 && code <= 0x077F) || (code >= 0x0590 && code <= 0x05FF)) return 'rtl';
+            if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A) || (code >= 0x0030 && code <= 0x0039) || (code >= 0x00C0 && code <= 0x024F) || (code >= 0x0400 && code <= 0x04FF) || (code >= 0x0370 && code <= 0x03FF)) return 'latin';
             return 'other';
         }
 
-        static normalize(text, mode = 'pdf') {
+        static normalize(text) {
             if (!text) return "";
             let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
             res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
-
             const lines = res.split("\n");
             let processed = "";
-            
             for (let i = 0; i < lines.length; i++) {
                 let curr = lines[i].trim();
                 if (curr.length === 0) { processed += "\n\n"; continue; }
-                const isTableLine = (line) => line && (line.startsWith('|') || line.includes('|'));
-
                 if (i < lines.length - 1) {
                     let next = lines[i + 1].trim();
-                    if (next.length === 0 || isTableLine(curr) || isTableLine(next)) {
-                        processed += curr + "\n";
-                        continue;
-                    }
-                    if (mode === 'ai' && (/^[-*•#\d.]/.test(next) || /^[-*•#]/.test(curr))) {
-                        processed += curr + "\n";
-                        continue;
-                    }
+                    if (next.length === 0) { processed += curr + "\n"; continue; }
                     let lastChar = curr.slice(-1);
                     let nextChar = next.charAt(0);
                     const typeA = this.getScriptType(lastChar);
                     const typeB = this.getScriptType(nextChar);
-
-                    if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) {
-                        processed += curr; 
-                    } else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
-                         processed += curr;
-                    } else {
-                        processed += curr + " ";
-                    }
-                } else {
-                    processed += curr;
-                }
+                    if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) { processed += curr; } 
+                    else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) { processed += curr; }
+                    else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) { processed += curr + "\n"; }
+                    else { processed += curr + " "; }
+                } else { processed += curr; }
             }
-
-            processed = processed.replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, "$1$2");
-            processed = processed.replace(/([\u4e00-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
-            processed = processed.replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fff])/g, "$1$2");
-
+            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af])\s+([\u2e80-\u9fff\uac00-\ud7af])/g, "$1$2");
+            processed = processed.replace(/([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])\s+([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])/g, "$1$2");
+            processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
+            processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
+            processed = processed.replace(/([$¥€£])\s+(\d)/g, "$1$2");
+            processed = processed.replace(/([(])\s+(.)/g, "$1$2");
+            processed = processed.replace(/(.)\s+([)])/g, "$1$2");
+            processed = processed.replace(/\s+([,.:;?!])/g, "$1");
             return processed.replace(/\n{3,}/g, "\n\n").trim();
         }
     }
 
-    // --- 【修正 1 & 2】幾何預處理與判定決策樹 ---
-    class AdvancedLayoutEngine {
-        constructor(items, pageWidth) { 
-            this.items = items; 
-            this.pageWidth = pageWidth; 
+    window.reportError = function(msg, errObj) {
+        const time = new Date().toLocaleTimeString();
+        const errText = errObj ? (errObj.stack || errObj.message || JSON.stringify(errObj)) : "N/A";
+        const logEntry = `[${time}] ERROR: ${msg}\nDetails: ${errText}\n----------------\n`;
+        const logArea = document.getElementById('error-log-area');
+        if (logArea) logArea.value += logEntry;
+        const statusBar = document.getElementById('status-bar');
+        if (statusBar) {
+            statusBar.innerText = `錯誤: ${msg} (請查看日誌)`;
+            statusBar.className = 'error';
+            statusBar.setAttribute('aria-live', 'assertive');
         }
-
-        process() {
-            const cleanedItems = this.perform3DMerge(this.items);
-            const lines = this.groupIntoLines(cleanedItems);
-            lines.sort((a, b) => a.y - b.y);
-            
-            let result = "";
-            let currentBlock = [];
-            for (let i = 0; i < lines.length; i++) {
-                currentBlock.push(lines[i]);
-                const nextLine = lines[i+1];
-                if (!nextLine || (nextLine.y - lines[i].y > lines[i].avgHeight * 1.8)) {
-                    if (this.isTableBlock(currentBlock)) { 
-                        result += this.renderMarkdownTable(currentBlock) + "\n\n"; 
-                    } else { 
-                        result += this.renderParagraphs(currentBlock) + "\n"; 
-                    }
-                    currentBlock = [];
-                }
-            }
-            return result;
-        }
-
-        perform3DMerge(items) {
-            if (items.length === 0) return [];
-            items.sort((a, b) => Math.abs(a.y - b.y) < 2 ? a.x - b.x : a.y - b.y);
-            const merged = [];
-            let current = items[0];
-            for (let i = 1; i < items.length; i++) {
-                const next = items[i];
-                const isSameRow = Math.abs(next.y - current.y) < current.fontHeight * 0.3;
-                const hGap = next.x - (current.x + current.w);
-                if (isSameRow && hGap < current.fontHeight * 0.15) {
-                    current.str += next.str;
-                    current.w = (next.x + next.w) - current.x;
-                } else {
-                    merged.push(current);
-                    current = next;
-                }
-            }
-            merged.push(current);
-            return merged;
-        }
-
-        groupIntoLines(items) {
-            const lines = [];
-            items.forEach(item => {
-                const match = lines.find(l => Math.abs(l.y - item.y) < item.fontHeight * 0.4);
-                if (match) {
-                    match.items.push(item);
-                    match.avgHeight = (match.avgHeight + item.fontHeight) / 2;
-                } else {
-                    lines.push({ y: item.y, avgHeight: item.fontHeight, items: [item] });
-                }
-            });
-            lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
-            return lines;
-        }
-
-        isTableBlock(lines) {
-            if (lines.length < 3) return false;
-
-            // 獲取區塊邊界
-            const blockLeft = Math.min(...lines.map(l => l.items[0].x));
-            const blockRight = Math.max(...lines.map(l => {
-                const last = l.items[l.items.length-1];
-                return last.x + last.w;
-            }));
-            const blockWidth = blockRight - blockLeft;
-
-            // 1. 計算間隙與覆蓋率 (Coverage Ratio)
-            let tableScore = 0;
-            lines.forEach(line => {
-                let textWidth = 0;
-                let validGapsInLine = 0;
-                for (let i = 0; i < line.items.length; i++) {
-                    textWidth += line.items[i].w;
-                    if (i > 0) {
-                        const gap = line.items[i].x - (line.items[i-1].x + line.items[i-1].w);
-                        // 間隙/高度比判定：需大於字體高度的 1.5 倍
-                        if (gap > line.avgHeight * 1.5) validGapsInLine++;
-                    }
-                }
-                const coverage = textWidth / blockWidth;
-                // 如果覆蓋率極高 (>85%)，視為段落，降低分數
-                if (coverage < 0.85 && validGapsInLine >= 1) tableScore++;
-            });
-
-            // 2. 幾何預處理層：多行座標比對系統 (Gutter Intersection)
-            // 我們尋找是否存在於多行中垂直位置一致的「通道」
-            const commonGaps = new Array(Math.ceil(this.pageWidth)).fill(0);
-            lines.forEach(line => {
-                for (let i = 1; i < line.items.length; i++) {
-                    const start = Math.floor(line.items[i-1].x + line.items[i-1].w);
-                    const end = Math.floor(line.items[i].x);
-                    if (end - start > line.avgHeight * 1.5) {
-                        for (let x = start; x < end; x++) {
-                            if (x >= 0 && x < commonGaps.length) commonGaps[x]++;
-                        }
-                    }
-                }
-            });
-
-            // 檢查是否有垂直貫通至少 60% 行數的通道
-            const hasVerticalRiver = commonGaps.some(count => count >= lines.length * 0.6);
-
-            // 綜合決策：必須有垂直通道且大多數行具備表格特徵
-            return hasVerticalRiver && (tableScore / lines.length > 0.5);
-        }
-
-        renderMarkdownTable(lines) {
-            let md = "";
-            lines.forEach((line, idx) => {
-                const row = line.items.map(it => it.str.trim().replace(/\|/g, '\\|')).join(' | ');
-                md += `| ${row} |\n`;
-                if (idx === 0) md += `| ${line.items.map(() => '---').join(' | ')} |\n`;
-            });
-            return md;
-        }
-
-        renderParagraphs(lines) {
-            return lines.map(l => {
-                let rowText = "";
-                for (let i = 0; i < l.items.length; i++) {
-                    if (i > 0) {
-                        const gap = l.items[i].x - (l.items[i-1].x + l.items[i-1].w);
-                        rowText += (gap > l.avgHeight * 0.5) ? "  " : "";
-                    }
-                    rowText += l.items[i].str;
-                }
-                return rowText;
-            }).join('\n');
-        }
-    }
-
-    // --- 【修正 3】分段隔離保護流程 ---
-    async function performAIProcessing(file, sourceMode, textData, needTranslate) {
-        const controller = new AbortController(); 
-        let pagesContent = [];
-
-        if (sourceMode === "image") {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            updateStatusBar(`OCR 處理中...`, "busy");
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 2.0 });
-                const canvas = document.createElement('canvas');
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-                const b64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-                const raw = await callAI(document.getElementById('provider-select').value, "Transcription.", b64, "image/jpeg", controller.signal, null, null, DEFAULT_OCR_PROMPT);
-                // 先進行正規化排版
-                pagesContent.push(UniversalTextNormalizer.normalize(raw, 'ai'));
-                canvas.remove();
-            }
-        } else {
-            // 文字版提取：先按分隔標誌切分，再逐頁進行排版與正規化
-            const parts = textData.split(/\[PAGE_SEP_(\d+)\]/);
-            for (let i = 1; i < parts.length; i += 2) {
-                const content = parts[i+1];
-                // 核心修正：先執行正規化與排版結構化
-                const normalized = UniversalTextNormalizer.normalize(content, 'pdf');
-                pagesContent.push(normalized);
-            }
-        }
-
-        // 最終步驟：在已穩定排版的內容外圍注入標題標籤
-        let finalOutput = pagesContent.map((c, i) => `## [Page ${i + 1}]\n\n${c}`).join('\n\n');
-
-        if (needTranslate) {
-            updateStatusBar("翻譯中...", "busy");
-            const res = await callAI(document.getElementById('provider-select').value, `[SOURCE]:\n${finalOutput}`, null, null, controller.signal, null, null, DEFAULT_TRANSLATE_PROMPT);
-            addMessage('assistant', res);
-        } else {
-            addMessage('assistant', finalOutput);
-        }
-        updateStatusBar("任務完成", "ready");
-        playAudioCue('success');
-    }
-
-    // --- PDF 文字提取入口 ---
-    async function extractTextFromPDF_Accurate(file) {
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let output = "";
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                const viewport = page.getViewport({ scale: 1.0 });
-                const items = content.items.map(it => ({
-                    str: it.str,
-                    x: it.transform[4],
-                    y: viewport.height - it.transform[5],
-                    w: it.width,
-                    fontHeight: Math.abs(it.transform[3])
-                }));
-                const engine = new AdvancedLayoutEngine(items, viewport.width);
-                // 使用暫時分隔標記
-                output += `[PAGE_SEP_${i}]` + engine.process();
-            }
-            return output;
-        } catch (e) { return null; }
-    }
-
-    // --- 基礎框架與 AI 通訊 ---
-    const DEFAULT_CHAT_PROMPT = "你是一位助手，請用繁體中文回答。";
-    const DEFAULT_OCR_PROMPT = "請精確轉錄文字。";
-    const DEFAULT_TRANSLATE_PROMPT = "請翻譯成繁體中文，保留 [Page X] 標記。";
-    const PROVIDERS = {
-        gemini: { models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
-        openrouter: { models: ["google/gemini-2.0-flash-001", "openai/gpt-4o"] },
-        openai: { models: ["gpt-4o"] }
+        playAudioCue('error');
     };
+
+    window.onerror = function(message, source, lineno, colno, error) {
+        window.reportError(`Global: ${message}`, error);
+    };
+
+    window.addEventListener('pdfjs-loaded', () => {
+        const btn = document.getElementById('pdf-start-btn');
+        if (btn) {
+            btn.innerText = "📄 PDF 完整閱讀 (本地核心就緒)";
+            btn.disabled = false;
+        }
+        showReadyStatus();
+    });
+
+    const DEFAULT_CHAT_PROMPT = `# 角色設定\n你是一位專為香港視障人士服務的 AI 助理。\n\n# 規則\n1. **語言**：繁體中文（香港）。\n2. **格式**：使用 Markdown 標題 (#) 與清單 (-)，避免裝飾性符號。\n3. **精簡**：重點置前，語氣友善。`;
+    const DEFAULT_OCR_PROMPT = `# SYSTEM ROLE\nOCR Engine for visually impaired users.\n\n# TASK\nTranscribe text from the image strictly.\n\n# RULES\n1. **Verbatim**: No summaries. Output exact text.\n2. **Format**: Markdown headers/lists.\n3. **Language**: Keep original (mostly Traditional Chinese/English).`;
+    const DEFAULT_TRANSLATE_PROMPT = `# ROLE\nTranslator (Traditional Chinese - Hong Kong).\n\n# TASK\nTranslate the input text fully and fluently. Fix broken lines.`;
+
+    const PROMPT_VERSION_KEY = "prompt_ver_2025_release";
+    
+    const PROVIDERS = {
+        gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-2.0-flash", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro", "gemini-1.5-flash"] },
+        openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-001", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-001", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
+        mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
+        openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
+        groq: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "llama-3.3-70b-versatile", canFetch: true, listUrl: "https://api.groq.com/openai/v1/models", models: ["llama-3.3-70b-versatile"] },
+        perplexity: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "sonar-pro", canFetch: false, models: ["sonar-pro"] }
+    };
+
     let currentActiveModelId = "";
     let selectedFile = null;
+    let recognition = null; 
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let chatHistory = [];
+    let audioContext = null;
+    let allCurrentModels = [];
+    let isVoiceRecording = false;
+    let specificConfigs = { ocr: null, translate: null };
+    let memoryPrompts = { chat: "", ocr: "", translate: "" };
+    let currentEditingMode = 'chat'; 
 
-    window.reportError = (m, e) => { document.getElementById('status-bar').innerText = m; console.error(e); };
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    function handleProviderChange() {
-        const p = document.getElementById('provider-select').value;
-        const s = document.getElementById('model-select');
-        s.innerHTML = "";
-        PROVIDERS[p].models.forEach(m => {
-            const o = document.createElement('option'); o.value = m; o.innerText = m; s.appendChild(o);
-        });
-        currentActiveModelId = s.value;
+    function ensureAudioContext() {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') audioContext.resume();
+    }
+    
+    ['click', 'touchstart', 'keydown'].forEach(evt => document.addEventListener(evt, ensureAudioContext, { once: false, passive: true }));
+    document.addEventListener('keydown', handleGlobalShortcuts);
+
+    function initVoiceButtonEvents() {
+        const btn = document.getElementById('voice-btn');
+        if (!btn) return;
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); ensureAudioContext(); startVoiceRecording(); }, {passive: false});
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
+        btn.addEventListener('mousedown', (e) => { ensureAudioContext(); startVoiceRecording(); });
+        btn.addEventListener('mouseup', (e) => { stopVoiceRecording(); });
+        btn.addEventListener('mouseleave', (e) => { if(isVoiceRecording) stopVoiceRecording(); });
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    function saveSettings() {
-        localStorage.setItem('api_key', document.getElementById('api-key').value);
-        currentActiveModelId = document.getElementById('model-select').value;
-        alert("設定已儲存");
-    }
-
-    function updateStatusBar(t, s = 'ready') {
-        const b = document.getElementById('status-bar');
-        b.innerText = t; b.style.background = s === 'busy' ? '#664400' : '#222';
-    }
-
-    function addMessage(role, content) {
-        const div = document.createElement('div');
-        div.className = `message ${role}`;
-        div.innerHTML = `<div class="markdown-body">${DOMPurify.sanitize(marked.parse(content))}</div>`;
-        document.getElementById('chat-output').appendChild(div);
-        div.scrollIntoView();
-        return div;
-    }
-
-    async function callAI(p, txt, file, mime, sig, ovModel, ovKey, sys) {
-        const k = ovKey || document.getElementById('api-key').value;
-        const m = ovModel || currentActiveModelId;
-        if (!k) throw new Error("API Key Required");
-        let url, body, headers = { 'Content-Type': 'application/json' };
-        if (p === 'gemini') {
-            url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
-            body = { system_instruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts: file ? [{ inline_data: { mime_type: mime, data: file } }, { text: txt }] : [{ text: txt }] }] };
-        } else {
-            url = p === 'openai' ? "https://api.openai.com/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-            headers['Authorization'] = `Bearer ${k}`;
-            body = { model: m, messages: [{ role: "system", content: sys }, { role: "user", content: txt }] };
+    function handleGlobalShortcuts(e) {
+        if (!e.altKey || !e.shiftKey) return;
+        const key = e.key.toLowerCase();
+        if (key === 'v') { e.preventDefault(); ensureAudioContext(); if (isVoiceRecording) stopVoiceRecording(); else startVoiceRecording(); return; }
+        const actions = { 's': { id: 'settings-summary', type: 'click' }, 'c': { id: 'copy-btn', type: 'click' }, 't': { id: 'export-txt-btn', type: 'click' }, 'h': { id: 'export-html-btn', type: 'click' }, 'u': { id: 'upload-btn', type: 'click' }, 'n': { id: 'new-chat-btn', type: 'click' }, 'p': { id: 'pause-send', type: 'click' }, 'k': { id: 'submit-btn', type: 'click' }, 'i': { id: 'user-input', type: 'focus' }, 'r': { selector: '.mini-copy-btn', type: 'click' } };
+        if (actions[key]) {
+            e.preventDefault(); ensureAudioContext();
+            let target = actions[key].id ? document.getElementById(actions[key].id) : document.querySelector(actions[key].selector);
+            if (target) { if (actions[key].type === 'click') target.click(); else if (actions[key].type === 'focus') target.focus(); }
         }
-        const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: sig });
-        const d = await r.json();
-        return p === 'gemini' ? d.candidates[0].content.parts[0].text : d.choices[0].message.content;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
+                ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral'].forEach(p => localStorage.removeItem(`${p}_prompt`));
+                localStorage.setItem(PROMPT_VERSION_KEY, 'true');
+            }
+            const savedProvider = localStorage.getItem('provider');
+            const savedTimeout = localStorage.getItem('timeout_setting');
+            if (savedTimeout) document.getElementById('timeout-setting').value = savedTimeout;
+            document.getElementById('openrouter-web-search').checked = (localStorage.getItem('openrouter_web_search') === 'true');
+            const savedVoiceEngine = localStorage.getItem('voice_engine');
+            if (savedVoiceEngine) document.getElementById('voice-engine').value = savedVoiceEngine;
+            const savedVoiceKey = localStorage.getItem('voice_api_key');
+            if (savedVoiceKey) document.getElementById('voice-api-key').value = savedVoiceKey;
+            const savedEnter = localStorage.getItem('enter_to_send');
+            document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
+            const savedSpecifics = localStorage.getItem('specific_configs');
+            if (savedSpecifics) specificConfigs = JSON.parse(savedSpecifics);
+            updateConfigStatusDisplay();
+            memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
+            memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
+            if (savedProvider && PROVIDERS[savedProvider]) {
+                document.getElementById('provider-select').value = savedProvider;
+                document.getElementById('settings-area').open = false; 
+            } else {
+                document.getElementById('provider-select').value = 'gemini'; 
+                document.getElementById('settings-area').open = true; 
+            }
+            handleProviderChange(false); initVoiceSystem(); initPasteImage(); initDragAndDrop(); initEnterKey(); initVoiceButtonEvents();
+        } catch (e) { window.reportError("Init Error", e); }
+    });
+
+    function switchPromptEditor(mode) {
+        const textarea = document.getElementById('system-prompt');
+        memoryPrompts[currentEditingMode] = textarea.value;
+        currentEditingMode = mode;
+        textarea.value = memoryPrompts[mode];
+        document.getElementById('tab-chat').classList.toggle('active', mode === 'chat');
+        document.getElementById('tab-ocr').classList.toggle('active', mode === 'ocr');
+        document.getElementById('tab-translate').classList.toggle('active', mode === 'translate');
+    }
+
+    function setSpecificConfig(type) {
+        const provider = document.getElementById('provider-select').value;
+        const model = currentActiveModelId;
+        specificConfigs[type] = { provider, model };
+        localStorage.setItem('specific_configs', JSON.stringify(specificConfigs));
+        const currentKey = document.getElementById('api-key').value;
+        if (currentKey) localStorage.setItem(`${provider}_key`, currentKey.trim());
+        updateConfigStatusDisplay();
+        showTransientStatus(`已設定 ${type} 專用模型`);
+    }
+
+    function clearSpecificConfigs() {
+        specificConfigs = { ocr: null, translate: null };
+        localStorage.removeItem('specific_configs');
+        updateConfigStatusDisplay();
+        showTransientStatus("已重置分工設定");
+    }
+
+    function updateConfigStatusDisplay() {
+        const display = document.getElementById('config-status-display');
+        let html = "<strong>目前配置：</strong><br>";
+        html += specificConfigs.ocr ? `• OCR: <span class="highlight">${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}</span><br>` : `• OCR: 跟隨主要<br>`;
+        html += specificConfigs.translate ? `• 翻譯: <span class="highlight">${specificConfigs.translate.provider} / ${specificConfigs.translate.model}</span>` : `• 翻譯: 跟隨主要`;
+        display.innerHTML = html;
+    }
+
+    function playAudioCue(type) {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        const now = audioContext.currentTime;
+        if (type === 'start') { oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); } 
+        else if (type === 'success') { oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); } 
+        else if (type === 'error') { oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); } 
+        else if (type === 'abort') { oscillator.type = 'triangle'; oscillator.frequency.setValueAtTime(400, now); oscillator.frequency.linearRampToValueAtTime(200, now + 0.1); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); }
+    }
+
+    function resetConversation() {
+        chatHistory = []; document.getElementById('chat-output').innerHTML = ""; 
+        document.getElementById('user-input').value = ""; selectedFile = null;
+        document.getElementById('upload-btn').innerText = "選擇檔案 (Alt+Shift+U)";
+        document.getElementById('file-input').value = ""; toggleExportButtons(false);
+        showTransientStatus("對話已清除", "info");
     }
 
     function handlePDFToolFileSelect() {
-        const f = document.getElementById('pdf-tool-input').files[0];
-        if (f) processPDFTool(f);
+        const input = document.getElementById('pdf-tool-input');
+        if (input.files.length > 0) { processPDFTool(input.files[0]); document.getElementById('status-bar').focus(); }
+        input.value = ""; 
+    }
+    
+    function isCanvasBlank(canvas) {
+        try {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const w = canvas.width, h = canvas.height;
+            const cx = Math.floor(w / 2 - 25), cy = Math.floor(h / 2 - 25);
+            if (cx < 0 || cy < 0) return false; 
+            const imageData = ctx.getImageData(cx, cy, 50, 50);
+            const data = imageData.data;
+            for(let i = 0; i < data.length; i += 4) { if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) return false; }
+            return true;
+        } catch(e) { return false; }
     }
 
     async function processPDFTool(file) {
-        updateStatusBar("分析 PDF...", "busy");
-        const raw = await extractTextFromPDF_Accurate(file);
-        const needTrans = document.getElementById('pdf-translate').checked;
-        if (!raw || raw.replace(/\s/g, '').length < 100) {
-            await performAIProcessing(file, "image", null, needTrans);
+        if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
+        if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF"); return; }
+        resetConversation(); playAudioCue('start');
+        const alwaysAI = document.getElementById('pdf-always-ai').checked;
+        const needTranslate = document.getElementById('pdf-translate').checked;
+        try {
+            updateStatusBar("正在分析 PDF...", "busy");
+            let pageContents = [];
+            let sourceMode = "text";
+            if (!alwaysAI) {
+                const localPages = await extractTextFromPDF_Accurate(file);
+                if (localPages && localPages.length > 0) {
+                    const sample = localPages.join('').replace(/\s/g, '');
+                    if (sample.length > 50 && !/[\uFFFD]/.test(sample.slice(0, 100))) {
+                        pageContents = localPages.map(p => UniversalTextNormalizer.normalize(p));
+                        sourceMode = "text";
+                    } else sourceMode = "image";
+                } else sourceMode = "image";
+            } else sourceMode = "image";
+            await performAIProcessing(file, sourceMode, pageContents, needTranslate);
+        } catch (e) { window.reportError("PDF Tool Error", e); }
+    }
+
+    async function performAIProcessing(file, sourceMode, initialPages, needTranslate) {
+        const controller = new AbortController(); 
+        let finalPageTexts = initialPages;
+
+        if (sourceMode === "image") {
+            finalPageTexts = [];
+            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} API Key`);
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
+            updateVisualProgress(true, `OCR 處理中 (共 ${pdf.numPages} 頁)`);
+            for (let i = 1; i <= pdf.numPages; i++) {
+                updateVisualProgress(true, `OCR 進度: ${i} / ${pdf.numPages}`);
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width; canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                if (isCanvasBlank(canvas)) { finalPageTexts.push("(空白頁)"); canvas.remove(); continue; }
+                const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+                let pageText = await callAI(ocrProvider, "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey, memoryPrompts.ocr);
+                finalPageTexts.push(UniversalTextNormalizer.normalize(pageText));
+                canvas.remove(); await sleep(200); 
+            }
+            updateVisualProgress(false);
+        }
+
+        // 在顯示前才加入 Markdown 標籤
+        let accumulatedText = finalPageTexts.map((txt, idx) => `## [Page ${idx+1}]\n${txt}`).join('\n\n');
+
+        if (needTranslate) {
+            let transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
+            let transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+            let transApiKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
+            updateStatusBar("正在翻譯全文...", "busy");
+            const finalRes = await callAI(transProvider, `[SOURCE TEXT]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
+            addMessage('assistant', finalRes);
         } else {
-            await performAIProcessing(file, "text", raw, needTrans);
+            addMessage('assistant', accumulatedText);
+        }
+        playAudioCue('success'); updateStatusBar("任務完成", "ready");
+    }
+
+    function updateVisualProgress(show, text="") {
+        const el = document.getElementById('visual-progress');
+        if (show) { el.classList.add('active'); el.innerText = text; } else { el.classList.remove('active'); }
+    }
+
+    async function extractTextFromPDF_Accurate(file) {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
+            let pages = [];
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const items = content.items.filter(item => item.str && item.str.trim().length > 0);
+                if (items.length === 0) { pages.push(""); continue; }
+                const viewport = page.getViewport({ scale: 1.0 });
+                const normalizedItems = items.map(item => ({ str: item.str, x: item.transform[4], y: viewport.height - item.transform[5], w: item.width, h: item.height || 10, fontHeight: Math.abs(item.transform[3]) }));
+                const columns = detectColumns(normalizedItems, viewport.width);
+                let pageStr = "";
+                for (const col of columns) {
+                    col.sort((a, b) => (Math.abs(a.y - b.y) < Math.min(a.fontHeight, b.fontHeight) * 0.5) ? a.x - b.x : a.y - b.y);
+                    pageStr += assembleLinesAdaptive(col) + "\n";
+                }
+                pages.push(pageStr);
+            }
+            return pages;
+        } catch (e) { return null; }
+    }
+
+    function detectColumns(items, pageWidth) {
+        const bucketSize = 2; const bins = new Array(Math.ceil(pageWidth / bucketSize)).fill(0);
+        items.forEach(item => {
+            for(let k = Math.floor(item.x / bucketSize); k <= Math.floor((item.x + item.w) / bucketSize); k++) if(k >= 0 && k < bins.length) bins[k] = 1;
+        });
+        let gaps = [], currentGap = { start: -1, width: 0 };
+        for (let i = Math.floor(bins.length * 0.2); i < Math.floor(bins.length * 0.8); i++) {
+            if (bins[i] === 0) { if (currentGap.start === -1) currentGap.start = i; currentGap.width++; }
+            else if (currentGap.width > 0) { gaps.push({ ...currentGap }); currentGap = { start: -1, width: 0 }; }
+        }
+        const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
+        if (validGap.width > bins.length * 0.02) {
+            const splitX = (validGap.start + validGap.width / 2) * bucketSize;
+            return [items.filter(it => it.x + it.w < splitX), items.filter(it => it.x >= splitX)];
+        }
+        return [items];
+    }
+
+    function assembleLinesAdaptive(items) {
+        if (items.length === 0) return "";
+        let result = "", lastItem = null;
+        for (let item of items) {
+            if (lastItem) {
+                if ((item.y - lastItem.y > Math.min(lastItem.fontHeight, item.fontHeight) * 0.5)) result += "\n";
+                else {
+                    const typeA = UniversalTextNormalizer.getScriptType(lastItem.str.slice(-1)), typeB = UniversalTextNormalizer.getScriptType(item.str.charAt(0));
+                    const gap = item.x - (lastItem.x + lastItem.w);
+                    if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') { if (gap > item.fontHeight * 2) result += " "; }
+                    else if ((typeA === 'cjk' && typeB === 'cjk') || (typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) { if (gap > item.fontHeight * 1.5) result += " "; }
+                    else if (gap > item.fontHeight * 0.35) result += " ";
+                }
+            }
+            result += item.str; lastItem = item;
+        }
+        return result;
+    }
+
+    function initVoiceSystem() { if (document.getElementById('voice-engine').value === 'browser') initBrowserSpeech(); else if (recognition) { recognition.stop(); recognition = null; } }
+
+    function initBrowserSpeech() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition(); 
+            recognition.lang = 'zh-HK'; recognition.continuous = true; recognition.interimResults = true; 
+            recognition.onstart = () => { isVoiceRecording = true; document.getElementById('voice-btn').classList.add('recording'); document.getElementById('voice-btn').innerText = "放開傳送..."; updateStatusBar('正在聆聽...', 'recording'); playAudioCue('start'); };
+            recognition.onresult = (e) => {
+                let t = ''; for (let i = e.resultIndex; i < e.results.length; ++i) if (e.results[i].isFinal) t += e.results[i][0].transcript;
+                if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
+            };
+            recognition.onerror = (e) => { if (e.error !== 'aborted') { showTransientStatus('語音錯誤', 'error'); playAudioCue('error'); } stopVoiceInputUI(); };
+            recognition.onend = () => { if (isVoiceRecording) playAudioCue('abort'); stopVoiceInputUI(); };
         }
     }
 
-    function handleFileSelect() { selectedFile = document.getElementById('file-input').files[0]; }
+    async function startVoiceRecording() {
+        ensureAudioContext(); if (isVoiceRecording) return;
+        const engine = document.getElementById('voice-engine').value;
+        if (engine === 'browser') { if (recognition) try { recognition.start(); } catch(e) {} }
+        else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream); audioChunks = []; 
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = async () => { await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); stream.getTracks().forEach(t=>t.stop()); };
+                mediaRecorder.start(); isVoiceRecording = true;
+                document.getElementById('voice-btn').classList.add('recording'); document.getElementById('voice-btn').innerText = "放開傳送..."; playAudioCue('start');
+            } catch (e) { showTransientStatus('麥克風錯誤', 'error'); playAudioCue('error'); }
+        }
+    }
+
+    function stopVoiceRecording() {
+        if (!isVoiceRecording) return;
+        const engine = document.getElementById('voice-engine').value;
+        playAudioCue('success'); isVoiceRecording = false; 
+        if (engine === 'browser' && recognition) recognition.stop();
+        else if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); showTransientStatus('正在處理...', 'busy'); }
+    }
+
+    function stopVoiceInputUI() {
+        isVoiceRecording = false; const btn = document.getElementById('voice-btn');
+        btn.classList.remove('recording'); btn.innerText = "按住說話";
+        if (!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus();
+    }
+
+    async function processWhisperAudio(blob, engine, mime) {
+        let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
+        if (!apiKey) return alert("需 API Key");
+        const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
+        fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
+        try {
+            const res = await fetch(engine==='openai'?"https://api.openai.com/v1/audio/transcriptions":"https://api.groq.com/openai/v1/audio/transcriptions", { method:'POST', headers:{'Authorization':`Bearer ${apiKey}`}, body:fd });
+            const data = await res.json();
+            if (data.text) { document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + data.text; }
+        } catch(e) { window.reportError("Whisper Error", e); }
+        finally { stopVoiceInputUI(); }
+    }
+
+    function saveVoiceSettings() { localStorage.setItem('voice_engine', document.getElementById('voice-engine').value); localStorage.setItem('voice_api_key', document.getElementById('voice-api-key').value); initVoiceSystem(); }
+    function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
+    function initDragAndDrop() { const d = document.getElementById('user-input'); d.ondragover = e => {e.preventDefault(); d.classList.add('dragover')}; d.ondragleave = () => d.classList.remove('dragover'); d.ondrop = e => {e.preventDefault(); d.classList.remove('dragover'); handleFileSelect(e.dataTransfer.files[0]);}; }
+    function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
+    function updateStatusBar(t, s='ready') { const b = document.getElementById('status-bar'); b.innerText = t; b.className = s; b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite'); }
+    function showReadyStatus() { updateStatusBar("準備就緒"); }
+    function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
+    
+    function addMessage(role, content) {
+        const div = document.createElement('div'); 
+        div.className = `message ${role}`; 
+        div.tabIndex = -1; // 無障礙焦點支持
+        div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+        if(role==='assistant') {
+            const btn = document.createElement('button'); btn.className='mini-copy-btn'; btn.innerText='複製 (Alt+Shift+R)';
+            btn.onclick = () => navigator.clipboard.writeText(div.querySelector('.markdown-body').innerText).then(()=>showTransientStatus('已複製'));
+            div.appendChild(btn);
+        }
+        document.getElementById('chat-output').appendChild(div);
+        
+        // 修正 C: 無障礙自動聚焦，確保讀屏軟體朗讀回應
+        setTimeout(() => { div.focus(); }, 100);
+        return div;
+    }
+
+    function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
+    
+    function handleProviderChange(save=true) {
+        const p = document.getElementById('provider-select').value, c = PROVIDERS[p];
+        document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+        memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
+        if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
+        document.getElementById('openrouter-settings').classList.toggle('hidden', p!=='openrouter');
+        allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
+        handleModelFilter();
+        currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
+        document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
+        if(save) localStorage.setItem('provider', p);
+        resetConversation(); showReadyStatus();
+    }
+
+    function handleModelFilter() {
+        const f = document.getElementById('model-filter-input').value.toLowerCase();
+        updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
+    }
+
+    function updateModelSelect(list, active) {
+        const s = document.getElementById('model-select'); s.innerHTML = ""; let found = false;
+        list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
+        const cust = document.createElement('option'); cust.value="CUSTOM"; cust.innerText="自行輸入..."; s.appendChild(cust);
+        if(found) { s.value=active; document.getElementById('custom-model-wrapper').classList.add('hidden'); } 
+        else { s.value="CUSTOM"; document.getElementById('custom-model-wrapper').classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
+    }
+
+    async function fetchOnlineModels() {
+        const p = document.getElementById('provider-select').value, k = document.getElementById('api-key').value;
+        if(!k && p!=='openrouter') return alert("需 API Key");
+        const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
+        try {
+            let list=[];
+            if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
+            else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+            else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
+            if(list.length) { localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); allCurrentModels=list; handleModelFilter(); showTransientStatus("已更新"); }
+        } catch(e) { window.reportError("更新失敗", e); } finally { btn.innerText="更新"; btn.disabled=false; }
+    }
+
+    function handleModelSelectChange() {
+        if(document.getElementById('model-select').value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
+        else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=document.getElementById('model-select').value; }
+        resetConversation();
+    }
+    function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); resetConversation(); }
+    
+    function saveSettings() {
+        const p = document.getElementById('provider-select').value;
+        const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
+        memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+        localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
+        localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
+        localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+        localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
+        localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+        localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
+        localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
+        localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
+        saveVoiceSettings(); showTransientStatus("已儲存"); document.getElementById('settings-area').open = false;
+    }
+
+    function restoreDefaults() {
+        const p = document.getElementById('provider-select').value; 
+        memoryPrompts.chat = PROVIDERS[p].prompt; memoryPrompts.ocr = DEFAULT_OCR_PROMPT; memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
+        localStorage.removeItem(`${p}_prompt`); localStorage.removeItem('custom_prompt_ocr'); localStorage.removeItem('custom_prompt_translate');
+        document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
+        handleProviderChange(true); showTransientStatus("已還原");
+    }
+
+    function copyResult() { navigator.clipboard.writeText(document.getElementById('chat-output').innerText).then(()=>showTransientStatus("已複製")); }
+    function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("已複製")); }
+    function exportChat(fmt) {
+        const c = document.getElementById('chat-output'), b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
+    }
+    function handleFileSelect(f) { if(f) { selectedFile=f; document.getElementById('upload-btn').innerText=`已選: ${f.name}`; if(!document.getElementById('pause-send').checked) setTimeout(()=>document.querySelector('form').requestSubmit(), 500); } }
+    function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
 
     async function handleSubmit(e) {
-        e.preventDefault();
-        const txt = document.getElementById('user-input').value;
-        if (!txt) return;
-        updateStatusBar("AI 處理中...", "busy");
-        addMessage('user', txt);
+        e.preventDefault(); ensureAudioContext();
+        const txt = document.getElementById('user-input').value.trim();
+        if(!txt && !selectedFile) return;
+        playAudioCue('start'); updateStatusBar("處理中...", 'busy');
+        const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
         try {
-            const res = await callAI(document.getElementById('provider-select').value, txt, null, null, null, null, null, DEFAULT_CHAT_PROMPT);
-            addMessage('assistant', res);
-            document.getElementById('user-input').value = "";
-        } catch (e) { reportError("錯誤", e); }
-        finally { updateStatusBar("就緒"); }
+            let input = txt, fileData = null, mime = null, skipFile = false;
+            if(selectedFile) {
+                if(selectedFile.type==='application/pdf') {
+                    const pages = await extractTextFromPDF_Accurate(selectedFile);
+                    if(pages) { 
+                        // 在此處也遵循「顯示前才加標題」的原則，但傳給 AI 時需要標明頁碼以便理解
+                        input=`[PDF CONTENT]:\n${pages.map((p,i)=>`## [Page ${i+1}]\n${UniversalTextNormalizer.normalize(p)}`).join('\n\n')}\n\n${txt}`; 
+                        skipFile=true; 
+                    }
+                } else { fileData=await readFileAsBase64(selectedFile); mime=selectedFile.type; }
+            }
+            const res = await callAI(document.getElementById('provider-select').value, input, skipFile?null:fileData, mime, ctl.signal, null, null, memoryPrompts.chat);
+            document.getElementById('user-input').value=""; document.getElementById('upload-btn').innerText="選擇檔案 (Alt+Shift+U)"; selectedFile=null;
+            addMessage('user', txt||"[檔案]"); 
+            // 修正 E: 不再對 AI 的回應執行 UniversalTextNormalizer.normalize
+            addMessage('assistant', res); 
+            chatHistory.push({role:'user',content:input}); chatHistory.push({role:'assistant',content:res});
+            playAudioCue('success'); showReadyStatus();
+        } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); document.getElementById('submit-btn').disabled=false; }
     }
 
-    function resetConversation() { document.getElementById('chat-output').innerHTML = ""; }
-
-    function playAudioCue(type) {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        osc.connect(ctx.destination);
-        osc.start(); osc.stop(ctx.currentTime + 0.1);
+    async function callAI(p, txt, file, mime, sig, ovModel, ovKey, ovSystemPrompt) {
+        const k = ovKey || document.getElementById('api-key').value, m = ovModel || currentActiveModelId, sys = ovSystemPrompt || document.getElementById('system-prompt').value; 
+        if(!k) throw new Error("需 API Key");
+        let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
+        if(p==='gemini') {
+            url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
+            body = { system_instruction:{parts:[{text:sys}]}, contents:[{role:"user", parts:file ? [{inline_data:{mime_type:mime, data:file}}, {text:txt}] : [{text:txt}]}] };
+        } else {
+            url = p==='openrouter'?"https://openrouter.ai/api/v1/chat/completions" : p==='mistral'?"https://api.mistral.ai/v1/chat/completions" : p==='openai'?"https://api.openai.com/v1/chat/completions" : p==='perplexity'?"https://api.perplexity.ai/chat/completions" : "https://api.groq.com/openai/v1/chat/completions";
+            if(p==='openrouter') { headers['HTTP-Referer'] = window.location.origin; headers['X-Title'] = 'AI Vision Helper'; if(document.getElementById('openrouter-web-search').checked) body.plugins = [{id:"web"}]; }
+            body = { ...body, model:m, messages:[{role:"system",content:sys}, {role:"user",content:file ? [{type:"text", text:txt}, {type:"image_url", image_url:{url:`data:${mime};base64,${file}`}}] : txt}], temperature:0.3 };
+        }
+        const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:sig});
+        if(!r.ok) throw new Error(`API Error: ${r.status}`);
+        const d = await r.json();
+        return p==='gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
     }
-
-    window.addEventListener('pdfjs-loaded', () => {
-        document.getElementById('pdf-start-btn').disabled = false;
-        updateStatusBar("準備就緒");
-        handleProviderChange();
-    });
 </script>
 </body>
 </html>
