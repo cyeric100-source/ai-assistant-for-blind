@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 視障助理 (2025 全能排版終極版)</title>
     
-    <!-- 引入核心庫 -->
+    <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
+    
+    <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
+    <!-- 【核心設定】PDF.js v5.4.449 : 讀取本地 pdf-dist 資料夾 -->
     <script type="module">
         // 【安全機制】本機執行檢測與鎖定
         if (window.location.protocol === 'file:') {
@@ -16,27 +19,45 @@
                 <body style="background:#000; color:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; margin:0; font-family:sans-serif;">
                     <h1 style="color:yellow; font-size:2.5rem; text-align:center;">⚠️ 環境錯誤</h1>
                     <p style="font-size:1.5rem; text-align:center; max-width:800px; line-height:1.6;">
-                        為了確保功能正常，本程式不支援在本機直接開啟。<br>請上傳至 GitHub Pages 使用。
+                        為了確保功能正常，本程式<strong>不支援</strong>在本機 (Local) 直接開啟。<br><br>
+                        請將此專案上傳至 <strong>GitHub</strong>，並透過 GitHub Pages 或線上網址開啟使用。
                     </p>
                 </body>
             `;
-            throw new Error("Local execution blocked.");
+            throw new Error("Local execution blocked. Please run on a server.");
         }
 
+        // 設定本地路徑 (基於 GitHub Desktop 上傳結構)
         const PDF_BASE = './pdf-dist/pdf.mjs';
         const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
         async function initPdfSystem() {
             try {
+                // 【安全機制】檢測 PDF 檔案結構
                 const response = await fetch(PDF_BASE, { method: 'HEAD' });
-                if (!response.ok) throw new Error("找不到 pdf-dist 資料夾");
+                if (!response.ok) {
+                    throw new Error(`找不到核心檔案 (Status: ${response.status}) - 請確認 GitHub 專案中是否有 pdf-dist 資料夾`);
+                }
+
+                // 1. 載入主程式庫
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
+
+                // 2. 設定 Worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+                
+                console.log("PDF System Initialized (Global Script Support)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
-                window.logToDebug("INFO", "PDF 核心載入成功");
+
             } catch (e) {
-                window.reportError("PDF 系統初始化失敗", e);
+                console.error("PDF Init Failed:", e);
+                window.reportError("PDF 核心載入失敗！\n請檢查您的 GitHub 儲存庫根目錄下，是否已正確包含 'pdf-dist' 資料夾。", e);
+                const btn = document.getElementById('pdf-start-btn');
+                if (btn) {
+                    btn.innerText = "⚠️ 錯誤：找不到 pdf-dist 資料夾";
+                    btn.classList.add('danger');
+                    btn.disabled = true;
+                }
             }
         }
         initPdfSystem();
@@ -44,81 +65,250 @@
     
     <style>
         :root {
-            --bg-color: #000000; --text-color: #FFFFFF; --accent-color: #FFFF00;
-            --user-header-color: #0088ff; --ai-header-color: #FFFF00;
-            --border-color: #555; --input-bg: #1A1A1A;
-            --button-bg: #FFFF00; --button-text: #000000;
-            --status-bg: #222; --tool-bg: #112233;
-            --active-tab-bg: #004488; --active-tab-text: #ffffff;
+            --bg-color: #000000;
+            --text-color: #FFFFFF;
+            --accent-color: #FFFF00;      /* 黃色高亮 */
+            --user-header-color: #0088ff; /* 用戶標題色 */
+            --ai-header-color: #FFFF00;   /* AI 標題色 */
+            --border-color: #555;
+            --input-bg: #1A1A1A;
+            --button-bg: #FFFF00;
+            --button-text: #000000;
+            --status-bg: #222;
+            --tool-bg: #112233;
+            --active-tab-bg: #004488;
+            --active-tab-text: #ffffff;
         }
 
         body {
-            font-family: system-ui, sans-serif;
-            background-color: var(--bg-color); color: var(--text-color);
-            margin: 0; padding: 60px 0 0 0; font-size: 1.2rem; line-height: 1.6;
-            -webkit-user-select: none; user-select: none;
+            /* 修正 3：排版渲染引擎最佳化 - 字型退路 */
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0; padding: 0;
+            font-size: 1.2rem; line-height: 1.6;
+            padding-top: 60px;
+            -webkit-user-select: none;
+            user-select: none;
         }
         
-        .message-area, textarea, input { -webkit-user-select: text; user-select: text; }
+        .message-area, #system-prompt, #user-input, input, #error-log-area {
+            -webkit-user-select: text;
+            user-select: text;
+        }
 
-        .container { max-width: 900px; margin: 0 auto; padding: 10px 10px 450px 10px; }
-        .app-title { font-size: 1.5rem; text-align: center; margin: 10px 0; color: #ccc; font-weight: bold; }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 10px 10px 450px 10px;
+        }
+
+        .app-title { 
+            font-size: 1.5rem; text-align: center; margin: 10px 0; color: #ccc; font-weight: bold;
+        }
         
+        details h2 { 
+            font-size: 1.4rem; color: #ccc; 
+            border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 10px; 
+            display: inline-block;
+        }
+
         input, select, textarea {
-            width: 100%; padding: 12px; margin: 5px 0 10px 0;
+            width: 100%; padding: 12px; margin-top: 5px; margin-bottom: 10px;
             background: var(--input-bg); border: 2px solid var(--border-color);
             color: var(--text-color); font-size: 1.1rem; border-radius: 6px; box-sizing: border-box;
         }
 
-        #system-prompt { min-height: 150px; }
+        #system-prompt, #error-log-area {
+            min-height: 150px;
+            resize: vertical;
+            overflow-y: auto;
+            font-family: monospace;
+            line-height: 1.4;
+        }
+        
         *:focus-visible { outline: 4px solid var(--accent-color) !important; }
 
         button {
             background-color: var(--button-bg); color: var(--button-text);
             border: 2px solid #fff; padding: 12px; font-size: 1.1rem; font-weight: bold;
-            border-radius: 8px; cursor: pointer; touch-action: manipulation;
+            border-radius: 8px; margin-top: 5px; cursor: pointer; touch-action: manipulation;
         }
-        button:disabled { filter: grayscale(100%); opacity: 0.7; }
+        button:disabled { filter: grayscale(100%); opacity: 0.7; cursor: not-allowed; }
         button.secondary { background-color: #333; color: #fff; border-color: #777; }
-        button.danger { background-color: #550000; color: #ffcccc; border-color: #ff4444; }
-        button.tool-btn { background-color: #0066cc; color: white; border-color: #44aaff; }
-        button.mini-copy-btn { background-color: #333; color: #fff; border: 1px solid #777; padding: 6px 12px; font-size: 0.9rem; margin-top: 10px; width: auto; }
+        
+        button.mini-copy-btn {
+            background-color: #333; color: #fff; border: 1px solid #777;
+            padding: 6px 12px; font-size: 0.9rem; margin-top: 10px;
+            width: auto; display: inline-block;
+        }
+        button.mini-copy-btn:hover { background-color: #555; }
+        
+        button.danger {
+            background-color: #550000; color: #ffcccc; border-color: #ff4444;
+        }
 
-        .settings-subsection { border: 1px solid #444; padding: 10px; border-radius: 6px; margin: 10px 0; background: #222; }
-        .settings-subsection h3 { margin: 0 0 10px 0; font-size: 1.1rem; color: var(--accent-color); }
+        button.tool-btn {
+            background-color: #0066cc; color: white; border: 2px solid #44aaff;
+        }
+        
+        button.recording {
+            background-color: #ff3333 !important; 
+            color: #ffffff !important; 
+            border-color: #ffaaaa !important;
+            transform: scale(0.98);
+            box-shadow: inset 0 0 10px #000;
+        }
+        
+        .assign-btn-group {
+            display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;
+        }
+        .assign-btn-group button {
+            flex: 1; font-size: 1rem; padding: 8px; margin-top: 0; min-width: 120px;
+            background-color: #224466; color: #fff; border: 1px solid #4488cc;
+        }
+        .assign-btn-group button.reset {
+            background-color: #442222; border-color: #cc6666;
+        }
 
-        .prompt-tabs { display: flex; gap: 2px; }
-        .prompt-tabs button { flex: 1; border-radius: 0; background: #333; color: #aaa; font-size: 1rem; }
-        .prompt-tabs button.active { background: var(--active-tab-bg); color: #fff; border-color: #fff; }
+        #config-status-display {
+            background: #1a1a1a; border: 1px solid #444; padding: 10px; 
+            border-radius: 6px; margin-bottom: 15px; font-size: 0.95rem; color: #aaa;
+        }
+        #config-status-display strong { color: #88ccff; }
+        #config-status-display .highlight { color: var(--accent-color); }
+
+        .prompt-tabs {
+            display: flex; gap: 2px; margin-top: 15px;
+        }
+        .prompt-tabs button {
+            flex: 1; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+            margin-top: 0; border-bottom: none; background: #333; color: #aaa;
+            font-size: 1rem; padding: 10px 5px;
+        }
+        .prompt-tabs button.active {
+            background: var(--active-tab-bg); color: var(--active-tab-text);
+            border-color: #fff; font-weight: bold;
+        }
 
         details { border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; margin-bottom: 10px; background: #111; }
-        .message { background: #111; padding: 15px; margin-bottom: 25px; border-left: 5px solid var(--border-color); }
-        .message:focus { outline: none; border-left-width: 8px; border-left-color: var(--accent-color); background: #222; }
+        summary { cursor: pointer; padding: 5px; }
+        
+        .pdf-tool-group {
+            background: var(--tool-bg); border: 2px solid #005588;
+        }
+        .pdf-tool-group h2 { color: #88ccff; border-bottom-color: #005588; }
+        
+        .message-area { min-height: 100px; padding-bottom: 20px; }
+        
+        .message {
+            background: #111; padding: 15px; margin-bottom: 25px;
+            border-left: 5px solid var(--border-color);
+            overflow-wrap: break-word; word-wrap: break-word; word-break: break-word;
+        }
+        .message:focus { outline: none; border-left: 8px solid var(--accent-color); background: #222; }
+
+        .message h1.msg-heading {
+            font-size: 1.4rem; margin: 0 0 10px 0; padding-bottom: 5px;
+            border-bottom: 1px dashed #444; line-height: 1.3;
+        }
+
         .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
+        .message.user h1.msg-heading { color: var(--user-header-color); }
+        
         .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
+        .message.assistant h1.msg-heading { color: var(--ai-header-color); }
 
-        .markdown-body { line-height: 1.7; overflow-wrap: break-word; }
-        .markdown-body h2 { color: #88CCFF; margin-top: 1.2em; }
+        .message.error { border-left-color: #ff0000; background: #330000; }
+        .message.error h1.msg-heading { color: #ff5555; }
 
-        .controls-wrapper { position: fixed; bottom: 0; left: 0; right: 0; background: #000; border-top: 3px solid var(--accent-color); padding: 10px; z-index: 100; }
+        /* 修正 3：排版渲染引擎最佳化 - RTL 與斷字 */
+        .markdown-body { 
+            line-height: 1.7; 
+            overflow-wrap: break-word; 
+            word-break: break-word;
+            unicode-bidi: isolate; /* 確保混合語文方向隔離 */
+        }
+        /* 針對 RTL 語系自動調整方向 */
+        .markdown-body[dir="auto"] { text-align: start; }
+
+        .markdown-body h1, .markdown-body h2 { color: #88CCFF; border-bottom: none; margin-top: 1.5em; }
+        .markdown-body p { margin-bottom: 10px; white-space: pre-wrap; } 
+        .markdown-body pre { 
+            background: #222; padding: 10px; overflow-x: auto; 
+            border: 1px solid #444; white-space: pre; 
+        }
+        .markdown-body code { background: #333; padding: 2px 4px; word-break: break-all; }
+
+        .controls-wrapper {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #000; border-top: 3px solid var(--accent-color);
+            padding: 10px; z-index: 100;
+        }
+
         .row { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-end; }
-        .check-btn { display: flex; align-items: center; justify-content: center; background: #222; border: 1px solid #555; padding: 10px; border-radius: 6px; flex: 1; cursor: pointer; }
         
-        #status-bar-container { position: fixed; top: 0; left: 0; right: 0; z-index: 2000; display: flex; flex-direction: column; }
-        #status-bar { background: var(--status-bg); color: #fff; padding: 10px; text-align: center; font-weight: bold; border-bottom: 2px solid var(--border-color); }
-        #status-bar.ready { background: #004400; }
-        #status-bar.busy { background: #664400; }
-        #status-bar.error { background: #660000; }
+        .check-btn {
+            display: flex; align-items: center; justify-content: center;
+            background: #222; border: 1px solid #555; color: #fff;
+            padding: 10px; border-radius: 6px; flex: 1;
+            cursor: pointer; margin-top: 5px;
+            height: auto; min-height: 52px;
+        }
+        .check-btn input { width: 20px; height: 20px; margin: 0 8px 0 0; }
 
-        #visual-progress { background: #333; color: #88ccff; font-size: 0.9rem; text-align: center; display: none; }
-        #visual-progress.active { display: block; }
+        #user-input {
+            margin: 0; min-height: 80px; max-height: 200px;
+            resize: vertical; overflow-y: auto; flex: 1;
+            transition: border-color 0.2s;
+        }
+        #user-input.dragover { border-color: var(--accent-color) !important; background-color: #222; }
+
+        #status-bar-container {
+            position: fixed; top: 0; left: 0; right: 0;
+            z-index: 2000; display: flex; flex-direction: column;
+        }
         
-        #debug-log-area { min-height: 120px; font-family: monospace; font-size: 0.85rem; background: #000; color: #00ff00; }
+        #status-bar {
+            background: var(--status-bg); color: #fff;
+            padding: 10px; text-align: center;
+            font-weight: bold; font-size: 1.1rem;
+            border-bottom: 2px solid var(--border-color);
+            transition: background-color 0.3s;
+        }
+        
+        #visual-progress {
+            background: #333; color: #88ccff; font-size: 0.9rem; 
+            text-align: center; padding: 2px; border-bottom: 1px solid #444;
+            display: none; 
+        }
+        #visual-progress.active { display: block; }
+
+        #status-bar.ready { background: #004400; border-bottom-color: #00ff00; }
+        #status-bar.busy { background: #664400; border-bottom-color: #ffff00; }
+        #status-bar.error { background: #660000; border-bottom-color: #ff0000; }
+        #status-bar.recording { background: #aa0000; border-bottom-color: #ff0000; animation: pulse-status 1s infinite; }
+        
+        @keyframes pulse-status {
+             0% { background-color: #aa0000; }
+             50% { background-color: #ff0000; }
+             100% { background-color: #aa0000; }
+        }
+
         .hidden { display: none !important; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+        
+        #custom-model-wrapper { margin-top: -5px; margin-bottom: 10px; }
+        .settings-subsection { border: 1px solid #444; padding: 10px; border-radius: 6px; margin: 10px 0; background: #222; }
+        .settings-subsection h3 { margin: 0 0 10px 0; font-size: 1.1rem; color: var(--accent-color); }
+        .export-actions { margin-bottom: 20px; display: flex; gap: 10px; }
+        
+        .cors-notice { background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.95rem; border: 1px solid #ffaa00; }
     </style>
 </head>
 <body>
 
+<!-- 狀態列容器 -->
 <div id="status-bar-container">
     <div id="status-bar" role="status" aria-live="polite" tabindex="-1">系統初始化中...</div>
     <div id="visual-progress" aria-hidden="true"></div>
@@ -127,292 +317,1262 @@
 <div class="container">
     <h1 class="app-title">AI 視障助理 (2025 全能排版終極版)</h1>
 
+    <!-- 設定區 -->
     <details id="settings-area">
-        <summary role="button" aria-expanded="false" id="settings-summary">
+        <summary role="button" aria-expanded="false" id="settings-summary" aria-keyshortcuts="Alt+Shift+S">
             <h2>設定 (Alt+Shift+S)</h2>
         </summary>
+        
         <div style="margin-top: 15px;">
+            <div class="cors-notice">
+                <strong>⚠️ 連線提示 (2025)：</strong> 
+                本程式使用本地核心處理 PDF，連線更穩定。推薦使用 <strong>Google Gemini</strong> 或 <strong>OpenRouter</strong> 進行 AI 對話。
+            </div>
+
             <label for="provider-select">主要 AI 服務商:</label>
             <select id="provider-select" onchange="handleProviderChange()">
-                <option value="gemini">Google Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="openai">OpenAI</option>
-                <option value="groq">Groq</option>
+                <option value="gemini">Google Gemini (推薦 - 穩定快速)</option>
+                <option value="openrouter">OpenRouter (萬用中轉 - 推薦)</option>
+                <option value="openai">OpenAI (可能需 Proxy)</option>
+                <option value="groq">Groq (可能需 Proxy)</option>
+                <option value="mistral">Mistral AI</option>
+                <option value="perplexity">Perplexity</option>
             </select>
 
-            <label for="api-key">API Key:</label>
-            <input type="password" id="api-key" placeholder="在此貼上 API Key" autocomplete="off">
+            <label for="api-key">主要 API Key:</label>
+            <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
             
-            <label for="model-select">模型選擇:</label>
-            <div class="row">
-                <select id="model-select" onchange="handleModelSelectChange()"></select>
-                <button type="button" onclick="fetchOnlineModels()" class="secondary">更新清單</button>
+            <label for="model-filter-input">篩選模型 (即時搜尋):</label>
+            <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, pro)..." oninput="handleModelFilter()">
+
+            <label for="model-select">模型選擇 (2025 Stable):</label>
+            <div class="row" style="margin-bottom: 10px;">
+                <select id="model-select" style="margin-bottom:0;" onchange="handleModelSelectChange()"></select>
+                <button type="button" id="refresh-btn" class="secondary" style="width: auto; margin-top:0;" onclick="fetchOnlineModels()" title="從網路更新模型清單">更新</button>
             </div>
+            
+            <div id="custom-model-wrapper" class="hidden">
+                <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+            </div>
+
+            <!-- 任務指派 -->
+            <div class="settings-subsection">
+                <h3>分工設定 (Task Assignment)</h3>
+                <div class="assign-btn-group">
+                    <button type="button" onclick="setSpecificConfig('ocr')">設為 OCR PDF 專用</button>
+                    <button type="button" onclick="setSpecificConfig('translate')">設為 翻譯 PDF 專用</button>
+                    <button type="button" class="reset" onclick="clearSpecificConfigs()">重置為跟隨主要設定</button>
+                </div>
+                <div id="config-status-display" aria-live="polite">目前設定載入中...</div>
+            </div>
+
+            <div id="openrouter-settings" class="hidden settings-subsection">
+                <h3>OpenRouter 搜尋設定</h3>
+                <label class="check-btn">
+                    <input type="checkbox" id="openrouter-web-search">
+                    <span>啟用聯網搜尋 (Web Search)</span>
+                </label>
+            </div>
+            
+            <label class="check-btn" style="flex:none; width:auto; margin-bottom: 10px;">
+                <input type="checkbox" id="enter-to-send" checked>
+                <span>按 Enter 鍵傳送 (取消勾選則 Enter 為換行)</span>
+            </label>
 
             <div class="settings-subsection">
-                <h3>系統指令</h3>
-                <div class="prompt-tabs">
-                    <button type="button" id="tab-chat" class="active" onclick="switchPromptEditor('chat')">對話</button>
-                    <button type="button" id="tab-ocr" onclick="switchPromptEditor('ocr')">OCR</button>
-                    <button type="button" id="tab-translate" onclick="switchPromptEditor('translate')">翻譯</button>
-                </div>
-                <textarea id="system-prompt" placeholder="輸入指令..."></textarea>
+                <h3>語音輸入設定</h3>
+                <label for="voice-engine">語音辨識引擎:</label>
+                <select id="voice-engine" onchange="saveVoiceSettings()">
+                    <option value="browser">瀏覽器原生 (免費，對講機模式)</option>
+                    <option value="openai">OpenAI Whisper (高準確，需付費)</option>
+                    <option value="groq">Groq Whisper (極速，需 Key)</option>
+                </select>
+                <label for="voice-api-key">語音辨識專用 API Key (選填):</label>
+                <input type="password" id="voice-api-key" placeholder="若留空，將嘗試使用主要 API Key" autocomplete="off" onchange="saveVoiceSettings()">
             </div>
 
-            <!-- 偵錯區塊 (預設隱藏) -->
-            <details style="border-color: #440000; background: #1a0000;">
-                <summary style="color: #ff8888;">偵錯診斷日誌 (Debug Log)</summary>
-                <textarea id="debug-log-area" readonly></textarea>
-                <button type="button" onclick="copyDebugLog()" style="width:100%;" class="secondary">複製日誌以供分析</button>
-            </details>
+            <label for="timeout-setting">回應逾時 (秒):</label>
+            <input type="number" id="timeout-setting" value="120" min="5" step="5">
 
-            <div class="row" style="margin-top:10px;">
-                <button type="button" onclick="saveSettings()" style="flex:1;">儲存設定</button>
-                <button type="button" onclick="restoreDefaults()" class="secondary" style="flex:1;">還原預設</button>
+            <!-- 系統指令編輯器 -->
+            <label style="margin-top: 15px; display:block; font-weight:bold;">系統指令 (System Prompts):</label>
+            <div class="prompt-tabs">
+                <button type="button" id="tab-chat" class="active" onclick="switchPromptEditor('chat')">編輯: 一般對話</button>
+                <button type="button" id="tab-ocr" onclick="switchPromptEditor('ocr')">編輯: OCR 專用</button>
+                <button type="button" id="tab-translate" onclick="switchPromptEditor('translate')">編輯: 翻譯專用</button>
+            </div>
+            <textarea id="system-prompt" placeholder="在此輸入系統指令..."></textarea>
+            
+            <!-- 錯誤回報區 -->
+            <div class="settings-subsection" style="border-color: #550000; background: #220000;">
+                <h3>錯誤診斷日誌 (Debug Log)</h3>
+                <textarea id="error-log-area" readonly placeholder="系統錯誤將顯示於此..."></textarea>
+                <button type="button" onclick="copyErrorLog()">複製錯誤內容以回報</button>
+            </div>
+
+            <div class="row">
+                <button type="button" onclick="saveSettings()">儲存設定</button>
+                <button type="button" onclick="restoreDefaults()" class="secondary">恢復預設值</button>
+                <button type="button" onclick="showHelp()" class="secondary" style="background:#004488; color:white;">功能說明</button>
             </div>
         </div>
     </details>
 
+    <!-- PDF 完整閱讀工具箱 -->
     <details class="pdf-tool-group" open>
-        <summary role="button" aria-expanded="true"><h2>PDF 智能工具箱</h2></summary>
+        <summary role="button" aria-expanded="true">
+            <h2>PDF 智能閱讀工具箱 (OCR & 翻譯)</h2>
+        </summary>
         <div style="margin-top: 15px;">
             <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
-            <button type="button" id="pdf-start-btn" class="tool-btn" style="width:100%;" onclick="document.getElementById('pdf-tool-input').click()" disabled>📄 PDF 完整閱讀 (載入中...)</button>
-            <div class="row" style="margin-top:10px;">
-                <label class="check-btn"><input type="checkbox" id="pdf-always-ai"><span>強制 OCR</span></label>
-                <label class="check-btn"><input type="checkbox" id="pdf-translate"><span>翻譯全文</span></label>
+
+            <button type="button" id="pdf-start-btn" class="tool-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
+                📄 PDF 完整閱讀 (本地核心就緒)
+            </button>
+            <small style="display:block; margin: 5px 0 15px 0; color:#ccc;">
+                * 說明：優先使用本機語義提取（修復單字破碎與亂碼）。若失敗，自動轉為圖片 OCR。
+            </small>
+
+            <div class="row">
+                <label class="check-btn">
+                    <input type="checkbox" id="pdf-always-ai">
+                    <span>總是將 PDF 傳給 AI (跳過本機提取)</span>
+                </label>
+
+                <label class="check-btn">
+                    <input type="checkbox" id="pdf-translate">
+                    <span>翻譯成繁體中文 (OCR後翻譯)</span>
+                </label>
             </div>
         </div>
     </details>
 
-    <main id="chat-output" class="message-area"></main>
+    <!-- 結果區 -->
+    <main role="main">
+        <div id="chat-output" class="message-area"></div>
+        
+        <div class="export-actions">
+            <button type="button" id="copy-btn" class="secondary hidden" onclick="copyResult()" aria-keyshortcuts="Alt+Shift+C" style="flex:1;">
+                複製 (Alt+Shift+C)
+            </button>
+            <button type="button" id="export-txt-btn" class="secondary hidden" onclick="exportChat('txt')" aria-keyshortcuts="Alt+Shift+T" style="flex:1;">
+                匯出 TXT (Alt+Shift+T)
+            </button>
+            <button type="button" id="export-html-btn" class="secondary hidden" onclick="exportChat('html')" aria-keyshortcuts="Alt+Shift+H" style="flex:1;">
+                匯出 HTML (Alt+Shift+H)
+            </button>
+        </div>
+    </main>
 </div>
 
-<footer class="controls-wrapper">
+<!-- 控制區 -->
+<footer class="controls-wrapper" role="region" aria-label="操作區">
     <form onsubmit="handleSubmit(event)">
         <div class="row">
-            <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()" style="flex:1;">清除對話</button>
-            <button type="button" id="copy-btn" class="secondary" onclick="copyResult()" style="flex:1;">複製全文</button>
+            <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
+            
+            <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()" aria-keyshortcuts="Alt+Shift+U" style="flex:1;">
+                選擇檔案 (Alt+Shift+U)
+            </button>
+            
+            <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()" aria-keyshortcuts="Alt+Shift+N" style="flex:1;">
+                清除對話 (Alt+Shift+N)
+            </button>
+
+            <label class="check-btn" style="flex:1;">
+                <input type="checkbox" id="pause-send" aria-keyshortcuts="Alt+Shift+P">
+                <span>暫停傳送 (Alt+Shift+P)</span>
+            </label>
         </div>
+        
         <div class="row">
-            <button type="button" id="voice-btn" class="secondary" style="height:80px; width:100px;">按住說話</button>
-            <textarea id="user-input" placeholder="輸入訊息..." rows="3"></textarea>
-            <button type="submit" id="submit-btn" style="height:80px; width:80px;">傳送</button>
+            <button type="button" id="voice-btn" class="secondary" aria-keyshortcuts="Alt+Shift+V" style="width: auto; padding: 0 15px; height: 80px; margin:0; font-size: 1.2rem;" title="語音輸入 (按住不放說話)" aria-label="語音輸入 (按住不放說話)">
+                按住說話
+            </button>
+            
+            <textarea id="user-input" placeholder="輸入訊息... (可拖放檔案或 Ctrl+V)" aria-keyshortcuts="Alt+Shift+I" autocomplete="off" rows="3" aria-label="輸入訊息區"></textarea>
+            
+            <button type="submit" id="submit-btn" aria-keyshortcuts="Alt+Shift+K" style="width: 80px; height: 80px; margin:0;" title="發送 (Alt+Shift+K)">傳送</button>
         </div>
     </form>
 </footer>
 
 <script>
-    // --- 1. 偵錯系統 ---
-    window.logToDebug = function(level, message, data = null) {
-        const area = document.getElementById('debug-log-area');
-        const time = new Date().toISOString().split('T')[1].split('.')[0];
-        // 遮蔽金鑰保護隱私
-        let dataStr = data ? JSON.stringify(data) : "";
-        dataStr = dataStr.replace(/Bearer [a-zA-Z0-9]{3,6}[a-zA-Z0-9]+[a-zA-Z0-9]{3,6}/g, (m) => m.slice(0, 10) + "..." + m.slice(-4));
-        const entry = `[${time}] ${level}: ${message} ${dataStr}\n`;
-        area.value += entry;
-        area.scrollTop = area.scrollHeight;
-    };
-
-    window.reportError = function(context, err) {
-        window.logToDebug("ERROR", context, { message: err.message, stack: err.stack });
-        let userMsg = "發生錯誤";
-        if (err.message.includes("401")) userMsg = "金鑰無效，請檢查設定。";
-        else if (err.message.includes("429")) userMsg = "發送太快，請稍等再試。";
-        else if (err.message.includes("fetch")) userMsg = "網路連線失敗，請檢查連網狀態。";
+    // --- 【修正 1 & 2】全球語言文字庫 & 智能黏合矩陣 ---
+    // 升級版 UniversalTextNormalizer：處理 CJK/SEA/RTL/Latin 等複雜混合語境
+    class UniversalTextNormalizer {
         
-        updateStatusBar(userMsg, "error");
+        // 判定字符所屬的語系腳本 (Script)
+        static getScriptType(char) {
+            if (!char) return 'other';
+            const code = char.charCodeAt(0);
+            
+            // 1. CJK 緊湊語言 (Compact - 無空格)
+            // 包含：漢字(Unified)、平假名、片假名、韓文(Hangul)
+            if ((code >= 0x4E00 && code <= 0x9FFF) || 
+                (code >= 0x3040 && code <= 0x309F) || 
+                (code >= 0x30A0 && code <= 0x30FF) || 
+                (code >= 0xAC00 && code <= 0xD7AF) ||
+                (code >= 0x3400 && code <= 0x4DBF)) // CJK Ext A
+                return 'cjk';
+
+            // 2. 東南亞連寫語言 (SEA - 無空格，需強制黏合)
+            // 包含：泰文、寮文、高棉文、緬甸文
+            if ((code >= 0x0E00 && code <= 0x0E7F) || // Thai
+                (code >= 0x0E80 && code <= 0x0EFF) || // Lao
+                (code >= 0x1780 && code <= 0x17FF) || // Khmer
+                (code >= 0x1000 && code <= 0x109F))   // Myanmar
+                return 'sea';
+
+            // 3. 右至左語言 (RTL)
+            // 包含：阿拉伯文、烏爾都文、希伯來文
+            if ((code >= 0x0600 && code <= 0x06FF) || // Arabic/Urdu
+                (code >= 0x0750 && code <= 0x077F) || // Arabic Sup
+                (code >= 0x0590 && code <= 0x05FF))   // Hebrew
+                return 'rtl';
+
+            // 4. 拉丁/西里爾/希臘/數字 (Space-based)
+            // 包含：英文、法文、俄文、德文、西班牙文、數字
+            if ((code >= 0x0041 && code <= 0x005A) || // A-Z
+                (code >= 0x0061 && code <= 0x007A) || // a-z
+                (code >= 0x0030 && code <= 0x0039) || // 0-9
+                (code >= 0x00C0 && code <= 0x024F) || // Latin Ext
+                (code >= 0x0400 && code <= 0x04FF) || // Cyrillic (Russian)
+                (code >= 0x0370 && code <= 0x03FF))   // Greek
+                return 'latin';
+
+            return 'other'; // 標點符號、印度文(Devanagari)等其他
+        }
+
+        // 判斷是否為緊湊型語言 (用於相容舊代碼)
+        static isCompactLang(char) {
+            const type = this.getScriptType(char);
+            return type === 'cjk' || type === 'sea';
+        }
+
+        static normalize(text) {
+            if (!text) return "";
+            
+            // 1. 統一換行符號
+            let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+            // 2. 處理連字符號換行 (Hyphenation) Ex: pro-\ncess -> process
+            res = res.replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
+
+            // 3. 段落重組 (Paragraph Reconstruction)
+            const lines = res.split("\n");
+            let processed = "";
+            
+            for (let i = 0; i < lines.length; i++) {
+                let curr = lines[i].trim();
+                
+                if (curr.length === 0) {
+                    processed += "\n\n"; 
+                    continue;
+                }
+                
+                if (i < lines.length - 1) {
+                    let next = lines[i + 1].trim();
+                    if (next.length === 0) {
+                        processed += curr + "\n";
+                        continue;
+                    }
+                    
+                    let lastChar = curr.slice(-1);
+                    let nextChar = next.charAt(0);
+                    
+                    const typeA = this.getScriptType(lastChar);
+                    const typeB = this.getScriptType(nextChar);
+
+                    // 智能黏合矩陣 (跨行版)
+                    // 規則：如果是 CJK/SEA 或 CJK+Latin 混合，去除跨行空格
+                    if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) {
+                        processed += curr; 
+                    } 
+                    // 針對用戶要求：CJK 與 英文/數字 之間，跨行時也不加空格
+                    else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
+                         processed += curr;
+                    }
+                    // 列表符號 -> 保留換行
+                    else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) {
+                        processed += curr + "\n";
+                    }
+                    // 歐語/RTL/印度語 -> 加空格
+                    else {
+                        processed += curr + " ";
+                    }
+                } else {
+                    processed += curr;
+                }
+            }
+
+            // 4. 強力正規化清理 (Regex Cleaning) - 針對單行內的破碎修復
+            
+            // 修復 CJK 內部空格 "中 文" -> "中文"
+            processed = processed.replace(/([\u2e80-\u9fff\uac00-\ud7af])\s+([\u2e80-\u9fff\uac00-\ud7af])/g, "$1$2");
+            
+            // 修復 泰文/寮文/高棉文 內部空格 (SEA 強制黏合)
+            processed = processed.replace(/([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])\s+([\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u1000-\u109f])/g, "$1$2");
+
+            // 修復 CJK 與 英文/數字 之間的空格 (依用戶要求移除) "檔案 PDF 1" -> "檔案PDF1"
+            processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
+            processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
+
+            // 修復貨幣與數字 "$ 1,632" -> "$1,632"
+            processed = processed.replace(/([$¥€£])\s+(\d)/g, "$1$2");
+            
+            // 修復括號 "( 5 款" -> "(5款"
+            processed = processed.replace(/([(])\s+(.)/g, "$1$2");
+            processed = processed.replace(/(.)\s+([)])/g, "$1$2");
+
+            // 修復標點前的多餘空格 "Word ." -> "Word."
+            processed = processed.replace(/\s+([,.:;?!])/g, "$1");
+
+            return processed.replace(/\n{3,}/g, "\n\n").trim();
+        }
+    }
+
+    // --- 全域錯誤處理機制 ---
+    window.reportError = function(msg, errObj) {
+        const time = new Date().toLocaleTimeString();
+        const errText = errObj ? (errObj.stack || errObj.message || JSON.stringify(errObj)) : "N/A";
+        const logEntry = `[${time}] ERROR: ${msg}\nDetails: ${errText}\n----------------\n`;
+        
+        const logArea = document.getElementById('error-log-area');
+        if (logArea) logArea.value += logEntry;
+        
+        console.error(msg, errObj);
+        
+        const statusBar = document.getElementById('status-bar');
+        if (statusBar) {
+            statusBar.innerText = `錯誤: ${msg} (請查看日誌)`;
+            statusBar.className = 'error';
+            statusBar.setAttribute('aria-live', 'assertive');
+        }
         playAudioCue('error');
     };
 
-    function copyDebugLog() {
-        navigator.clipboard.writeText(document.getElementById('debug-log-area').value);
-        showTransientStatus("日誌已複製");
-    }
+    window.onerror = function(message, source, lineno, colno, error) {
+        window.reportError(`Global: ${message}`, error);
+    };
 
-    // --- 2. 核心邏輯 ---
-    class UniversalTextNormalizer {
-        static getScriptType(c) {
-            const code = c.charCodeAt(0);
-            if (code >= 0x4E00 && code <= 0x9FFF) return 'cjk';
-            if (code >= 0x0E00 && code <= 0x109F) return 'sea';
-            if (code >= 0x0030 && code <= 0x007A) return 'latin';
-            return 'other';
+    window.addEventListener('pdfjs-loaded', () => {
+        const btn = document.getElementById('pdf-start-btn');
+        if (btn) {
+            btn.innerText = "📄 PDF 完整閱讀 (本地核心就緒)";
+            btn.disabled = false;
         }
-        static normalize(t) {
-            if (!t) return "";
-            let res = t.replace(/\r\n/g, "\n").replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
-            const lines = res.split("\n");
-            let out = "";
-            for (let i = 0; i < lines.length; i++) {
-                let curr = lines[i].trim();
-                if (!curr) { out += "\n\n"; continue; }
-                if (i < lines.length - 1) {
-                    let next = lines[i+1].trim();
-                    const typeA = this.getScriptType(curr.slice(-1)), typeB = this.getScriptType(next.charAt(0));
-                    if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) out += curr;
-                    else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) out += curr;
-                    else out += curr + " ";
-                } else out += curr;
-            }
-            return out.replace(/\s+([,.:;?!])/g, "$1").trim();
+        showReadyStatus();
+    });
+
+    // --- 預設指令 ---
+    const DEFAULT_CHAT_PROMPT = `# 角色設定
+你是一位專為香港視障人士服務的 AI 助理。
+
+# 規則
+1. **語言**：繁體中文（香港）。
+2. **格式**：使用 Markdown 標題 (#) 與清單 (-)，避免裝飾性符號。
+3. **精簡**：重點置前，語氣友善。`;
+
+    const DEFAULT_OCR_PROMPT = `
+# SYSTEM ROLE
+OCR Engine for visually impaired users.
+
+# TASK
+Transcribe text from the image strictly.
+
+# RULES
+1. **Verbatim**: No summaries. Output exact text.
+2. **Format**: Markdown headers/lists.
+3. **Language**: Keep original (mostly Traditional Chinese/English).`;
+
+    const DEFAULT_TRANSLATE_PROMPT = `
+# ROLE
+Translator (Traditional Chinese - Hong Kong).
+
+# TASK
+Translate the input text fully and fluently. Fix broken lines.`;
+
+    const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v2";
+    
+    // 更新模型清單 (2025 年 12 月 最新資訊)
+    const PROVIDERS = {
+        gemini: { 
+            prompt: DEFAULT_CHAT_PROMPT, 
+            defaultModel: "gemini-3.0-flash", 
+            canFetch: true, 
+            listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", 
+            models: ["gemini-3.0-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-2.0-flash"] 
+        },
+        openrouter: { 
+            prompt: DEFAULT_CHAT_PROMPT, 
+            defaultModel: "google/gemini-3.0-flash", 
+            canFetch: true, 
+            listUrl: "https://openrouter.ai/api/v1/models", 
+            models: ["google/gemini-3.0-flash", "google/gemini-2.0-flash-exp", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] 
+        },
+        mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
+        openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
+        groq: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "llama-3.3-70b-versatile", canFetch: true, listUrl: "https://api.groq.com/openai/v1/models", models: ["llama-3.3-70b-versatile"] },
+        perplexity: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "sonar-pro", canFetch: false, models: ["sonar-pro"] }
+    };
+
+    let currentActiveModelId = "";
+    let selectedFile = null;
+    let recognition = null; 
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let chatHistory = [];
+    let audioContext = null;
+    let allCurrentModels = [];
+    let isVoiceRecording = false;
+    let specificConfigs = { ocr: null, translate: null };
+    let memoryPrompts = { chat: "", ocr: "", translate: "" };
+    let currentEditingMode = 'chat'; 
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    function ensureAudioContext() {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(e => console.error("Audio resume failed", e));
         }
-    }
-
-    // --- 3. 重試機制 ---
-    async function callAIWithRetry(p, txt, file, mime, sig, model, key, sys) {
-        let lastError = null;
-        for (let attempt = 0; attempt <= 1; attempt++) {
-            try {
-                if (attempt === 1) {
-                    window.logToDebug("RETRY", "執行第 1 次重試");
-                    updateStatusBar("網路連線不穩定，正在進行第 1 次重試...", "busy");
-                    await sleep(2000); // 指數退避延遲
-                }
-                return await callAI(p, txt, file, mime, sig, model, key, sys);
-            } catch (e) {
-                lastError = e;
-                if (attempt === 0 && (e.message.includes("fetch") || e.status === 503)) {
-                    continue; // 僅針對網路或伺服器錯誤重試
-                }
-                break;
-            }
-        }
-        throw lastError;
-    }
-
-    // --- 4. 介面輔助 ---
-    function updateStatusBar(t, s='ready') {
-        const b = document.getElementById('status-bar');
-        b.innerText = t; b.className = s;
-        b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
-    }
-
-    function addMessage(role, content) {
-        const div = document.createElement('div');
-        div.className = `message ${role}`; div.tabIndex = -1;
-        div.innerHTML = `<h1 class="msg-heading">${role==='user'?'問題：':'回應：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
-        document.getElementById('chat-output').appendChild(div);
-        setTimeout(() => div.focus(), 150);
-        return div;
-    }
-
-    // --- 5. PDF 處理 ---
-    async function processPDFTool(file) {
-        updateStatusBar("分析檔案中...", "busy");
-        window.logToDebug("INFO", "開始處理 PDF", { name: file.name, size: file.size });
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let pageTexts = [];
-            const isOCR = document.getElementById('pdf-always-ai').checked;
-            
-            for (let i = 1; i <= pdf.numPages; i++) {
-                updateVisualProgress(true, `處理中: ${i}/${pdf.numPages}`);
-                const page = await pdf.getPage(i);
-                let text = "";
-                if (!isOCR) {
-                    const content = await page.getTextContent();
-                    text = UniversalTextNormalizer.normalize(content.items.map(it => it.str).join(' '));
-                }
-                // 若文字太少則自動觸發 OCR (模擬視覺)
-                if (text.length < 20 || isOCR) {
-                    window.logToDebug("DEBUG", `第 ${i} 頁改用 OCR`);
-                    const viewport = page.getViewport({ scale: 1.5 });
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = viewport.width; canvas.height = viewport.height;
-                    await page.render({ canvasContext: ctx, viewport }).promise;
-                    text = await callAIWithRetry(document.getElementById('provider-select').value, "OCR this page.", canvas.toDataURL('image/jpeg', 0.6).split(',')[1], "image/jpeg", null, null, null, "Extract text verbatim.");
-                }
-                pageTexts.push(`## [Page ${i}]\n${text}`);
-            }
-            
-            const combined = pageTexts.join("\n\n");
-            if (document.getElementById('pdf-translate').checked) {
-                const translated = await callAIWithRetry(document.getElementById('provider-select').value, combined, null, null, null, null, null, "Translate to Traditional Chinese.");
-                addMessage('assistant', translated);
-            } else {
-                addMessage('assistant', combined);
-            }
-            updateStatusBar("處理完成");
-        } catch (e) {
-            window.reportError("PDF 處理中斷", e);
-        } finally { updateVisualProgress(false); }
-    }
-
-    // --- 6. 通用函數 ---
-    const DEFAULT_CHAT_PROMPT = `你是一位香港視障助理。請使用繁體中文、Markdown 格式回答，並保持簡潔。`;
-    let memoryPrompts = { chat: DEFAULT_CHAT_PROMPT, ocr: "Extract text from image.", translate: "Translate to Traditional Chinese." };
-    let currentEditingMode = 'chat';
-
-    async function callAI(p, txt, file, mime, sig, model, key, sys) {
-        const apiKey = key || document.getElementById('api-key').value;
-        const mdl = model || document.getElementById('model-select').value;
-        if (!apiKey) throw new Error("401: 無 API Key");
-        
-        window.logToDebug("NETWORK", `請求 AI (${p})`, { model: mdl });
-        let url = "", body = {}, headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
-
-        if (p === 'gemini') {
-            url = `https://generativelanguage.googleapis.com/v1beta/models/${mdl}:generateContent?key=${apiKey}`;
-            delete headers['Authorization'];
-            body = { system_instruction: { parts: [{ text: sys }] }, contents: [{ role: "user", parts: file ? [{ inline_data: { mime_type: mime, data: file } }, { text: txt }] : [{ text: txt }] }] };
-        } else {
-            url = "https://openrouter.ai/api/v1/chat/completions";
-            body = { model: mdl, messages: [{ role: "system", content: sys }, { role: "user", content: file ? [{ type: "text", text: txt }, { type: "image_url", image_url: { url: `data:${mime};base64,${file}` } }] : txt }] };
-        }
-
-        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: sig });
-        if (!res.ok) {
-            const errData = await res.text();
-            const error = new Error(`API Error ${res.status}`);
-            error.status = res.status; error.details = errData;
-            throw error;
-        }
-        const data = await res.json();
-        return p === 'gemini' ? data.candidates[0].content.parts[0].text : data.choices[0].message.content;
-    }
-
-    async function handleSubmit(e) {
-        e.preventDefault();
-        const txt = document.getElementById('user-input').value.trim();
-        if (!txt) return;
-        updateStatusBar("思考中...", "busy");
-        try {
-            const res = await callAIWithRetry(document.getElementById('provider-select').value, txt, null, null, null, null, null, document.getElementById('system-prompt').value);
-            addMessage('user', txt);
-            addMessage('assistant', res);
-            document.getElementById('user-input').value = "";
-            updateStatusBar("準備就緒");
-        } catch (e) {
-            window.reportError("傳送失敗", e);
-        }
-    }
-
-    // 初始化與其餘輔助 UI 代碼... (比照舊版結構)
-    function handleProviderChange() {
-        const p = document.getElementById('provider-select').value;
-        const keys = { gemini: "gemini-2.0-flash", openrouter: "google/gemini-2.0-flash-001" };
-        const sel = document.getElementById('model-select');
-        sel.innerHTML = `<option value="${keys[p]}">${keys[p]}</option>`;
-        document.getElementById('system-prompt').value = memoryPrompts.chat;
     }
     
-    function updateVisualProgress(show, text="") {
-        const el = document.getElementById('visual-progress');
-        el.className = show ? 'active' : ''; el.innerText = text;
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, ensureAudioContext, { once: false, passive: true });
+    });
+    
+    document.addEventListener('keydown', handleGlobalShortcuts);
+
+    function initVoiceButtonEvents() {
+        const btn = document.getElementById('voice-btn');
+        if (!btn) return;
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); ensureAudioContext(); startVoiceRecording(); }, {passive: false});
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
+        btn.addEventListener('mousedown', (e) => { ensureAudioContext(); startVoiceRecording(); });
+        btn.addEventListener('mouseup', (e) => { stopVoiceRecording(); });
+        btn.addEventListener('mouseleave', (e) => { if(isVoiceRecording) stopVoiceRecording(); });
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-    function playAudioCue(t) { /* 播放音效 */ }
-    function resetConversation() { document.getElementById('chat-output').innerHTML = ""; }
-    function saveSettings() { showTransientStatus("設定已儲存"); }
-    function showTransientStatus(m) { updateStatusBar(m); setTimeout(() => updateStatusBar("準備就緒"), 3000); }
-    function handlePDFToolFileSelect() { const f = document.getElementById('pdf-tool-input').files[0]; if(f) processPDFTool(f); }
-    window.addEventListener('pdfjs-loaded', () => { document.getElementById('pdf-start-btn').disabled = false; document.getElementById('pdf-start-btn').innerText = "📄 PDF 完整閱讀 (本地核心就緒)"; });
+    function handleGlobalShortcuts(e) {
+        if (!e.altKey || !e.shiftKey) return;
+        const key = e.key.toLowerCase();
+        
+        if (key === 'v') {
+            e.preventDefault(); ensureAudioContext();
+            if (isVoiceRecording) stopVoiceRecording(); else startVoiceRecording();
+            return;
+        }
 
+        const actions = {
+            's': { id: 'settings-summary', type: 'click' },
+            'c': { id: 'copy-btn', type: 'click' },
+            't': { id: 'export-txt-btn', type: 'click' },
+            'h': { id: 'export-html-btn', type: 'click' },
+            'u': { id: 'upload-btn', type: 'click' },
+            'n': { id: 'new-chat-btn', type: 'click' },
+            'p': { id: 'pause-send', type: 'click' },
+            'k': { id: 'submit-btn', type: 'click' },
+            'i': { id: 'user-input', type: 'focus' },
+            'r': { selector: '.mini-copy-btn', type: 'click' }
+        };
+
+        if (actions[key]) {
+            e.preventDefault(); ensureAudioContext();
+            let target;
+            if (actions[key].id) target = document.getElementById(actions[key].id);
+            else if (actions[key].selector) target = document.querySelector(actions[key].selector);
+            if (target) {
+                if (actions[key].type === 'click') target.click();
+                else if (actions[key].type === 'focus') target.focus();
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
+                ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral'].forEach(p => localStorage.removeItem(`${p}_prompt`));
+                localStorage.setItem(PROMPT_VERSION_KEY, 'true');
+            }
+
+            const savedProvider = localStorage.getItem('provider');
+            const settingsDetails = document.getElementById('settings-area');
+            const savedTimeout = localStorage.getItem('timeout_setting');
+            if (savedTimeout) document.getElementById('timeout-setting').value = savedTimeout;
+            
+            document.getElementById('openrouter-web-search').checked = (localStorage.getItem('openrouter_web_search') === 'true');
+            const savedVoiceEngine = localStorage.getItem('voice_engine');
+            if (savedVoiceEngine) document.getElementById('voice-engine').value = savedVoiceEngine;
+            const savedVoiceKey = localStorage.getItem('voice_api_key');
+            if (savedVoiceKey) document.getElementById('voice-api-key').value = savedVoiceKey;
+            
+            const savedEnter = localStorage.getItem('enter_to_send');
+            document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
+
+            const savedSpecifics = localStorage.getItem('specific_configs');
+            if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
+            updateConfigStatusDisplay();
+
+            memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
+            memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
+
+            if (savedProvider && PROVIDERS[savedProvider]) {
+                document.getElementById('provider-select').value = savedProvider;
+                settingsDetails.open = false; 
+            } else {
+                document.getElementById('provider-select').value = 'gemini'; 
+                settingsDetails.open = true; 
+            }
+            
+            handleProviderChange(false); 
+            initVoiceSystem();
+            initPasteImage();
+            initDragAndDrop();
+            initEnterKey();
+            initVoiceButtonEvents();
+
+        } catch (e) {
+            window.reportError("Init Error", e);
+        }
+    });
+
+    function switchPromptEditor(mode) {
+        const textarea = document.getElementById('system-prompt');
+        memoryPrompts[currentEditingMode] = textarea.value;
+        currentEditingMode = mode;
+        textarea.value = memoryPrompts[mode];
+        document.getElementById('tab-chat').classList.toggle('active', mode === 'chat');
+        document.getElementById('tab-ocr').classList.toggle('active', mode === 'ocr');
+        document.getElementById('tab-translate').classList.toggle('active', mode === 'translate');
+    }
+
+    function setSpecificConfig(type) {
+        const provider = document.getElementById('provider-select').value;
+        const model = currentActiveModelId;
+        specificConfigs[type] = { provider, model };
+        localStorage.setItem('specific_configs', JSON.stringify(specificConfigs));
+        const currentKey = document.getElementById('api-key').value;
+        if (currentKey) localStorage.setItem(`${provider}_key`, currentKey.trim());
+        updateConfigStatusDisplay();
+        showTransientStatus(`已設定 ${type} 專用模型`);
+    }
+
+    function clearSpecificConfigs() {
+        specificConfigs = { ocr: null, translate: null };
+        localStorage.removeItem('specific_configs');
+        updateConfigStatusDisplay();
+        showTransientStatus("已重置分工設定");
+    }
+
+    function updateConfigStatusDisplay() {
+        const display = document.getElementById('config-status-display');
+        let html = "<strong>目前配置：</strong><br>";
+        html += specificConfigs.ocr ? `• OCR: <span class="highlight">${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}</span><br>` : `• OCR: 跟隨主要<br>`;
+        html += specificConfigs.translate ? `• 翻譯: <span class="highlight">${specificConfigs.translate.provider} / ${specificConfigs.translate.model}</span>` : `• 翻譯: 跟隨主要`;
+        display.innerHTML = html;
+    }
+
+    function playAudioCue(type) {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        const now = audioContext.currentTime;
+        
+        if (type === 'start') { 
+            oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); 
+        } else if (type === 'success') { 
+            oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); 
+        } else if (type === 'error') { 
+            oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); 
+        } else if (type === 'abort') {
+            oscillator.type = 'triangle'; oscillator.frequency.setValueAtTime(400, now); oscillator.frequency.linearRampToValueAtTime(200, now + 0.1); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1);
+        }
+    }
+
+    function resetConversation() {
+        chatHistory = []; 
+        document.getElementById('chat-output').innerHTML = ""; 
+        document.getElementById('user-input').value = "";
+        selectedFile = null;
+        document.getElementById('upload-btn').innerText = "選擇檔案 (Alt+Shift+U)";
+        document.getElementById('file-input').value = "";
+        toggleExportButtons(false);
+        showTransientStatus("對話已清除", "info");
+    }
+
+    function handlePDFToolFileSelect() {
+        const input = document.getElementById('pdf-tool-input');
+        if (input.files.length > 0) {
+            processPDFTool(input.files[0]);
+            document.getElementById('status-bar').focus(); 
+        }
+        input.value = ""; 
+    }
+    
+    // PDF 空白頁檢測
+    function isCanvasBlank(canvas) {
+        try {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = Math.floor(w / 2 - 25);
+            const cy = Math.floor(h / 2 - 25);
+            if (cx < 0 || cy < 0) return false; 
+            const imageData = ctx.getImageData(cx, cy, 50, 50);
+            const data = imageData.data;
+            for(let i = 0; i < data.length; i += 4) {
+                if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) return false; 
+            }
+            return true;
+        } catch(e) { console.warn("Blank check skipped:", e); return false; }
+    }
+
+    async function processPDFTool(file) {
+        if (typeof window.pdfjsLib === 'undefined') {
+            alert("PDF 核心正在載入中，請稍候再試。");
+            return;
+        }
+
+        if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF 檔案"); return; }
+        resetConversation(); playAudioCue('start');
+        
+        const alwaysAI = document.getElementById('pdf-always-ai').checked;
+        const needTranslate = document.getElementById('pdf-translate').checked;
+
+        try {
+            updateStatusBar("請稍後，正在分析 PDF...", "busy");
+            let extractedText = "";
+            let sourceMode = "text";
+
+            if (!alwaysAI) {
+                // 使用改進的「Advanced Layout Engine」
+                const localText = await extractTextFromPDF_Accurate(file);
+                
+                const cleanText = localText ? localText.replace(/\s/g, '') : "";
+                if (cleanText.length > 50 && !/[\uFFFD]/.test(cleanText.slice(0, 100))) {
+                    // **關鍵步驟**：提取後立刻進行語義正規化
+                    extractedText = UniversalTextNormalizer.normalize(localText);
+                    sourceMode = "text";
+                    updateStatusBar("文字提取成功 (XY-Cut Mode)，準備處理...", "busy");
+                } else {
+                    sourceMode = "image";
+                }
+            } else {
+                sourceMode = "image";
+            }
+
+            await performAIProcessing(file, sourceMode, extractedText, needTranslate);
+
+        } catch (e) {
+            window.reportError("PDF Processing Error", e);
+        }
+    }
+
+    async function performAIProcessing(file, sourceMode, textData, needTranslate) {
+        const controller = new AbortController(); 
+        let accumulatedText = "";
+
+        if (sourceMode === "image") {
+            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) 
+                            ? document.getElementById('api-key').value 
+                            : localStorage.getItem(`${ocrProvider}_key`);
+            const ocrSystemPrompt = memoryPrompts.ocr;
+
+            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} (OCR) 的 API Key`);
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ 
+                data: arrayBuffer, 
+                cMapUrl: './pdf-dist/cmaps/', 
+                cMapPacked: true,
+                standardFontDataUrl: './pdf-dist/standard_fonts/'
+            }).promise;
+            
+            const totalPages = pdf.numPages;
+            updateVisualProgress(true, `OCR 處理中 (共 ${totalPages} 頁)`);
+            
+            for (let i = 1; i <= totalPages; i++) {
+                if (i % 5 === 0) document.getElementById('visual-progress').innerText = `OCR 進度: ${i} / ${totalPages}`;
+                
+                const page = await pdf.getPage(i);
+                const viewportRaw = page.getViewport({ scale: 1.0 });
+                const maxDim = 1536; 
+                const scale = Math.min(maxDim / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
+                const viewport = page.getViewport({ scale });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width; canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                
+                if (isCanvasBlank(canvas)) {
+                    // [修正] 不加入 ##，僅使用純文字標記
+                    accumulatedText += `[Page ${i}]\n(空白頁)\n\n`;
+                    canvas.remove(); continue; 
+                }
+
+                const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+                let retry = 0; let pageText = "";
+                while(retry < 3) {
+                    try {
+                        pageText = await callAI(ocrProvider, "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey, ocrSystemPrompt);
+                        if (!pageText || pageText.trim().length === 0) pageText = "(無內容)";
+                        break;
+                    } catch(e) { retry++; await sleep(1500); }
+                }
+                
+                // OCR 結果也必須經過語義正規化
+                // [修正] 不加入 ##，僅使用純文字標記
+                accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
+                canvas.remove(); await sleep(200); 
+            }
+            updateVisualProgress(false);
+
+        } else {
+            accumulatedText = textData; 
+        }
+
+        if (needTranslate) {
+            let transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
+            let transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+            let transApiKey = (transProvider === document.getElementById('provider-select').value) 
+                              ? document.getElementById('api-key').value 
+                              : localStorage.getItem(`${transProvider}_key`);
+            
+            updateStatusBar("正在翻譯全文...", "busy");
+            const transInput = `[SOURCE TEXT]:\n${accumulatedText}`;
+            const finalRes = await callAI(transProvider, transInput, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
+            
+            addMessage('assistant', UniversalTextNormalizer.normalize(finalRes));
+        } else {
+            updateStatusBar("處理完成", "ready");
+            // [修正] 顯示前才將 [Page X] 轉換為 ## [Page X] 標題
+            let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
+            addMessage('assistant', displayText);
+        }
+
+        playAudioCue('success'); 
+        updateStatusBar("任務完成", "ready");
+        setTimeout(() => {
+            const output = document.getElementById('chat-output');
+            if(output.lastChild) output.lastChild.focus();
+        }, 500);
+    }
+
+    function updateVisualProgress(show, text="") {
+        const el = document.getElementById('visual-progress');
+        if (show) { el.classList.add('active'); el.innerText = text; } 
+        else { el.classList.remove('active'); el.innerText = ""; }
+    }
+
+    // --- 【核心引擎 2 (升級版)】 Advanced PDF Text Engine (XY-Cut & Adaptive) ---
+    async function extractTextFromPDF_Accurate(file) {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = window.pdfjsLib.getDocument({
+                data: arrayBuffer,
+                cMapUrl: './pdf-dist/cmaps/',
+                cMapPacked: true,
+                standardFontDataUrl: './pdf-dist/standard_fonts/',
+                disableCombineTextItems: false // 保持原始碎片，便於精確分析
+            });
+            const pdf = await loadingTask.promise;
+            let fullText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                
+                // --- 策略 1: 嘗試 Tagged PDF (Gold Standard) ---
+                let structText = null;
+                try {
+                    const structTree = await page.getStructTree();
+                    if (structTree) {
+                        console.log(`Page ${i} has StructTree (Tagged PDF detected). Using Layout Analysis for precision.`);
+                    }
+                } catch(e) { /* No struct tree, ignore */ }
+
+                // --- 策略 2: Advanced Layout Analysis (XY-Cut) ---
+                const content = await page.getTextContent({ includeMarkedContent: true });
+                const items = content.items.filter(item => item.str && item.str.trim().length > 0);
+
+                if (items.length === 0) {
+                    // [修正] 不加入 ##，僅使用純文字標記
+                    fullText += `[Page ${i}]\n\n`;
+                    continue;
+                }
+
+                // A. 預處理：計算平均字寬與正規化座標
+                const viewport = page.getViewport({ scale: 1.0 });
+                const normalizedItems = items.map(item => {
+                    const tx = item.transform;
+                    return {
+                        str: item.str,
+                        x: tx[4],
+                        y: viewport.height - tx[5], // Flip Y
+                        w: item.width,
+                        h: item.height || 10,
+                        hasEOL: item.hasEOL,
+                        fontHeight: Math.abs(tx[3]) // 字體實際高度
+                    };
+                });
+
+                // B. 執行 XY-Cut 分欄檢測
+                const columns = detectColumns(normalizedItems, viewport.width);
+                let pageStr = "";
+                
+                // C. 針對每一欄進行行排序與組裝
+                for (const columnItems of columns) {
+                    columnItems.sort((a, b) => {
+                        const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
+                        if (Math.abs(a.y - b.y) < rowTolerance) {
+                            return a.x - b.x; // 同一行，按 X 排序
+                        }
+                        return a.y - b.y; // 不同行，按 Y 排序
+                    });
+
+                    // 使用升級版的智能黏合邏輯
+                    pageStr += assembleLinesAdaptive(columnItems) + "\n";
+                }
+
+                // [修正] 不加入 ##，僅使用純文字標記
+                fullText += `[Page ${i}]\n${pageStr}\n\n`;
+            }
+            return fullText;
+        } catch (e) {
+            console.error("Advanced extract failed", e);
+            return null;
+        }
+    }
+
+    // --- 輔助算法：XY-Cut 分欄偵測 ---
+    function detectColumns(items, pageWidth) {
+        // 簡單版 XY-Cut：尋找頁面中央是否存在顯著的垂直空白帶
+        const bucketSize = 2;
+        const bins = new Array(Math.ceil(pageWidth / bucketSize)).fill(0);
+        
+        items.forEach(item => {
+            const startBin = Math.floor(item.x / bucketSize);
+            const endBin = Math.floor((item.x + item.w) / bucketSize);
+            for(let k = startBin; k <= endBin; k++) {
+                if(k >= 0 && k < bins.length) bins[k] = 1; // 標記為有內容
+            }
+        });
+
+        // 搜尋範圍：頁面中間 20% ~ 80%
+        const searchStart = Math.floor(bins.length * 0.2);
+        const searchEnd = Math.floor(bins.length * 0.8);
+        
+        let gaps = [];
+        let currentGap = { start: -1, width: 0 };
+        
+        for (let i = searchStart; i < searchEnd; i++) {
+            if (bins[i] === 0) {
+                if (currentGap.start === -1) currentGap.start = i;
+                currentGap.width++;
+            } else {
+                if (currentGap.width > 0) {
+                    gaps.push({ ...currentGap });
+                    currentGap = { start: -1, width: 0 };
+                }
+            }
+        }
+
+        const splitThreshold = bins.length * 0.02;
+        const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
+
+        if (validGap.width > splitThreshold) {
+            const splitX = (validGap.start + validGap.width / 2) * bucketSize;
+            const leftCol = items.filter(it => it.x + it.w < splitX);
+            const rightCol = items.filter(it => it.x >= splitX);
+            return [leftCol, rightCol];
+        }
+
+        return [items];
+    }
+
+    // --- 【修正 2】升級版輔助算法：適應性智能文字組裝 (Smart Glue Matrix) ---
+    function assembleLinesAdaptive(items) {
+        if (items.length === 0) return "";
+        
+        let result = "";
+        let lastItem = null;
+        
+        for (let item of items) {
+            if (lastItem) {
+                // 1. 換行判斷
+                const rowTolerance = Math.min(lastItem.fontHeight, item.fontHeight) * 0.5;
+                const isNewLine = (item.y - lastItem.y > rowTolerance) || lastItem.hasEOL;
+
+                if (isNewLine) {
+                    result += "\n";
+                } else {
+                    // 2. 智能黏合矩陣 (Smart Glue Matrix)
+                    const prevChar = lastItem.str.slice(-1);
+                    const currChar = item.str.charAt(0);
+                    const typeA = UniversalTextNormalizer.getScriptType(prevChar);
+                    const typeB = UniversalTextNormalizer.getScriptType(currChar);
+
+                    const gap = item.x - (lastItem.x + lastItem.w);
+                    
+                    // 規則 A: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合 (無視 gap)
+                    if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
+                        // 僅在極大間距(如 Tab)時才分開
+                        if (gap > item.fontHeight * 2) result += " "; 
+                    }
+                    // 規則 B: CJK 之間，或 CJK 與 Latin/Num 混合 -> 強制黏合 (依用戶要求無多餘空格)
+                    else if ((typeA === 'cjk' && typeB === 'cjk') || 
+                             (typeA === 'cjk' && typeB === 'latin') || 
+                             (typeA === 'latin' && typeB === 'cjk')) {
+                         // 除非間距大到像 Tab，否則黏合
+                         if (gap > item.fontHeight * 1.5) result += " ";
+                    }
+                    // 規則 C: 歐語系 (Latin/Latin) -> 依閾值判斷
+                    else {
+                        // 閾值：字體高度的 35%
+                        const spaceThreshold = item.fontHeight * 0.35;
+                        if (gap > spaceThreshold) {
+                            result += " ";
+                        }
+                    }
+                }
+            }
+            result += item.str;
+            lastItem = item;
+        }
+        return result;
+    }
+
+    function initVoiceSystem() {
+        const engine = document.getElementById('voice-engine').value;
+        if (engine === 'browser') initBrowserSpeech(); 
+        else if (recognition) { recognition.stop(); recognition = null; }
+    }
+
+    function initBrowserSpeech() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition(); 
+            recognition.lang = 'zh-HK'; 
+            recognition.continuous = true; 
+            recognition.interimResults = true; 
+            
+            recognition.onstart = () => { 
+                isVoiceRecording = true;
+                const btn = document.getElementById('voice-btn');
+                btn.classList.add('recording'); 
+                btn.innerText = "放開傳送...";
+                updateStatusBar('正在聆聽...', 'recording'); 
+                playAudioCue('start'); 
+            };
+            
+            recognition.onresult = (e) => {
+                let t = ''; 
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) t += e.results[i][0].transcript;
+                }
+                if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
+            };
+            
+            recognition.onerror = (e) => { 
+                if (e.error !== 'aborted' && e.error !== 'no-speech') {
+                    showTransientStatus('語音錯誤', 'error'); 
+                    playAudioCue('error');
+                }
+                stopVoiceInputUI();
+            };
+            
+            recognition.onend = () => { 
+                if (isVoiceRecording) { playAudioCue('abort'); }
+                stopVoiceInputUI();
+            };
+        }
+    }
+
+    async function startVoiceRecording() {
+        ensureAudioContext(); 
+        if (isVoiceRecording) return;
+        const engine = document.getElementById('voice-engine').value;
+        
+        if (engine === 'browser') {
+            if (recognition) { try { recognition.start(); } catch(e) {} }
+        } else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = []; 
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = async () => { 
+                    await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
+                    stream.getTracks().forEach(t=>t.stop()); 
+                };
+                mediaRecorder.start(); 
+                isVoiceRecording = true;
+                document.getElementById('voice-btn').classList.add('recording');
+                document.getElementById('voice-btn').innerText = "放開傳送...";
+                playAudioCue('start');
+            } catch (e) { 
+                showTransientStatus('麥克風錯誤', 'error'); playAudioCue('error'); 
+            }
+        }
+    }
+
+    function stopVoiceRecording() {
+        if (!isVoiceRecording) return;
+        ensureAudioContext(); 
+        const engine = document.getElementById('voice-engine').value;
+        playAudioCue('success');
+        isVoiceRecording = false; 
+
+        if (engine === 'browser' && recognition) {
+            recognition.stop();
+        } else if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            showTransientStatus('正在處理錄音...', 'busy');
+        }
+    }
+
+    function stopVoiceInputUI() {
+        isVoiceRecording = false;
+        const btn = document.getElementById('voice-btn');
+        btn.classList.remove('recording');
+        btn.innerText = "按住說話";
+        if (!document.getElementById('status-bar').classList.contains('busy')) {
+             showReadyStatus();
+        }
+    }
+
+    async function processWhisperAudio(blob, engine, mime) {
+        let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
+        if (!apiKey) return alert("需 API Key");
+        const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
+        fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
+        try {
+            const res = await fetch(engine==='openai'?"https://api.openai.com/v1/audio/transcriptions":"https://api.groq.com/openai/v1/audio/transcriptions", { method:'POST', headers:{'Authorization':`Bearer ${apiKey}`}, body:fd });
+            const data = await res.json();
+            if (data.text) { document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + data.text; showTransientStatus("完成"); }
+        } catch(e) { window.reportError("Whisper API Error", e); }
+        finally { stopVoiceInputUI(); }
+    }
+
+    function saveVoiceSettings() { localStorage.setItem('voice_engine', document.getElementById('voice-engine').value); localStorage.setItem('voice_api_key', document.getElementById('voice-api-key').value); initVoiceSystem(); }
+    function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
+    function initDragAndDrop() { const d = document.getElementById('user-input'); d.ondragover = e => {e.preventDefault(); d.classList.add('dragover')}; d.ondragleave = () => d.classList.remove('dragover'); d.ondrop = e => {e.preventDefault(); d.classList.remove('dragover'); handleFileSelect(e.dataTransfer.files[0]);}; }
+    function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
+    
+    function updateStatusBar(t, s='ready') { 
+        const b = document.getElementById('status-bar'); 
+        b.innerText = t; b.className = s; 
+        b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
+    }
+    
+    function showReadyStatus() { updateStatusBar("準備就緒"); }
+    function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
+    
+    function addMessage(role, content) {
+        const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
+        // 修正 3：加入 HTML dir="auto" 屬性確保顯示正確
+        div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+        if(role==='assistant') {
+            const btn = document.createElement('button'); btn.className='mini-copy-btn'; btn.innerText='複製 (Alt+Shift+R)';
+            btn.onclick = () => navigator.clipboard.writeText(div.querySelector('.markdown-body').innerText).then(()=>showTransientStatus('已複製'));
+            div.appendChild(btn);
+        }
+        document.getElementById('chat-output').appendChild(div); return div;
+    }
+    function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
+    
+    function handleProviderChange(save=true) {
+        const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
+        document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+        memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
+        
+        if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
+
+        document.getElementById('openrouter-settings').classList.toggle('hidden', p!=='openrouter');
+        allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
+        handleModelFilter();
+        currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
+        document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
+        if(save) localStorage.setItem('provider', p);
+        resetConversation(); showReadyStatus();
+    }
+    function handleModelFilter() {
+        const f = document.getElementById('model-filter-input').value.toLowerCase();
+        updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
+    }
+    function updateModelSelect(list, active) {
+        const s = document.getElementById('model-select'); s.innerHTML = "";
+        let found = false;
+        list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
+        const cust = document.createElement('option'); cust.value="CUSTOM"; cust.innerText="自行輸入..."; s.appendChild(cust);
+        const w = document.getElementById('custom-model-wrapper');
+        if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
+    }
+    async function fetchOnlineModels() {
+        const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
+        if(!k && p!=='openrouter') return alert("需 API Key");
+        const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
+        try {
+            let list=[];
+            if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
+            else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+            else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
+            if(list.length) { localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); allCurrentModels=list; handleModelFilter(); showTransientStatus("已更新"); }
+        } catch(e) { window.reportError("更新模型列表失敗", e); } finally { btn.innerText="更新"; btn.disabled=false; }
+    }
+    function handleModelSelectChange() {
+        const s = document.getElementById('model-select');
+        if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
+        else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
+        resetConversation();
+    }
+    function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); resetConversation(); }
+    
+    function saveSettings() {
+        const p = document.getElementById('provider-select').value;
+        const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
+        
+        memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+        localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
+        localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
+        localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+        localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
+        localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+        localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
+        localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
+        localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
+        saveVoiceSettings(); showTransientStatus("已儲存"); document.getElementById('settings-area').open = false;
+    }
+
+    function restoreDefaults() {
+        const p = document.getElementById('provider-select').value; 
+        memoryPrompts.chat = PROVIDERS[p].prompt;
+        memoryPrompts.ocr = DEFAULT_OCR_PROMPT;
+        memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
+        localStorage.removeItem(`${p}_prompt`);
+        localStorage.removeItem('custom_prompt_ocr');
+        localStorage.removeItem('custom_prompt_translate');
+        document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
+        localStorage.removeItem(`${p}_model`); 
+        handleProviderChange(true); 
+        showTransientStatus("已還原預設值");
+    }
+
+    function copyResult() { navigator.clipboard.writeText(document.getElementById('chat-output').innerText).then(()=>showTransientStatus("已複製")); }
+    function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("錯誤日誌已複製")); }
+    
+    function exportChat(fmt) {
+        const c = document.getElementById('chat-output');
+        const b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
+    }
+    function handleFileSelect(f) {
+        if(f) { selectedFile=f; document.getElementById('upload-btn').innerText=`已選: ${f.name}`; showTransientStatus("已加入"); if(!document.getElementById('pause-send').checked) setTimeout(()=>document.querySelector('form').requestSubmit(), 500); }
+    }
+    function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
+
+    async function handleSubmit(e) {
+        e.preventDefault(); ensureAudioContext();
+        const txt = document.getElementById('user-input').value.trim();
+        if(!txt && !selectedFile) return showTransientStatus("請輸入", 'error');
+        
+        playAudioCue('start'); updateStatusBar("處理中...", 'busy');
+        const btn = document.getElementById('submit-btn'); btn.disabled=true;
+        const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
+        
+        try {
+            let input = txt; let fileData = null; let mime = null; let skipFile = false;
+            if(selectedFile) {
+                if(selectedFile.type==='application/pdf') {
+                    // 使用最新的 Advanced Layout Engine (XY-Cut)
+                    const pdfText = await extractTextFromPDF_Accurate(selectedFile);
+                    if(pdfText) { 
+                        // **關鍵步驟**：進入 Prompt 前確保已經正規化
+                        const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
+                        input=`[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; 
+                        skipFile=true; 
+                    }
+                } else { 
+                    fileData=await readFileAsBase64(selectedFile); mime=selectedFile.type; 
+                }
+            }
+            
+            const res = await callAI(document.getElementById('provider-select').value, input, skipFile?null:fileData, mime, ctl.signal, null, null, memoryPrompts.chat);
+            document.getElementById('user-input').value=""; document.getElementById('upload-btn').innerText="選擇檔案 (Alt+Shift+U)"; selectedFile=null;
+            addMessage('user', txt||"[檔案]"); 
+            // AI 回應也進行標準化
+            const ai = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
+            setTimeout(() => { ai.focus(); }, 100);
+            chatHistory.push({role:'user',content:input}); chatHistory.push({role:'assistant',content:res});
+            playAudioCue('success'); showReadyStatus();
+        } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
+    }
+
+    async function callAI(p, txt, file, mime, sig, ovModel, ovKey, ovSystemPrompt) {
+        const k = ovKey || document.getElementById('api-key').value; 
+        const m = ovModel || currentActiveModelId;
+        const sys = ovSystemPrompt || document.getElementById('system-prompt').value; 
+        
+        if(!k) throw new Error("需 API Key");
+        let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
+        
+        const isMultiImage = Array.isArray(file);
+        if (isMultiImage) { mime = "image/jpeg"; }
+
+        if(p==='gemini') {
+            url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
+            let parts = [];
+            if (isMultiImage) {
+                file.forEach(b64 => parts.push({inline_data:{mime_type:"image/jpeg", data:b64}}));
+                parts.push({text:txt});
+            } else {
+                parts = file ? [{inline_data:{mime_type:mime, data:file}}, {text:txt}] : [{text:txt}];
+            }
+            body = { system_instruction:{parts:[{text:sys}]}, contents:[{role:"user", parts:parts}] };
+        } else {
+            if (p === 'openrouter') {
+                url = "https://openrouter.ai/api/v1/chat/completions";
+                headers['HTTP-Referer'] = 'https://ai-vision-helper.app'; // CORS requirement
+                headers['X-Title'] = 'AI Vision Helper';
+                if(document.getElementById('openrouter-web-search').checked) body.plugins = [{id:"web"}];
+            } else if (p === 'mistral') {
+                url = "https://api.mistral.ai/v1/chat/completions";
+            } else if (p === 'perplexity') {
+                url = "https://api.perplexity.ai/chat/completions";
+            } else if (p === 'openai') {
+                url = "https://api.openai.com/v1/chat/completions";
+            } else {
+                url = "https://api.groq.com/openai/v1/chat/completions";
+            }
+
+            let content = [];
+            if (file) {
+                content.push({type:"text", text:txt});
+                content.push({type:"image_url", image_url:{url:`data:${mime};base64,${file}`}});
+            } else {
+                content = txt;
+            }
+            body = { ...body, model:m, messages:[{role:"system",content:sys}, {role:"user",content:content}], temperature:0.3 };
+        }
+        
+        const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:sig});
+        if(!r.ok) {
+            const errText = await r.text();
+            throw new Error(`API Error (${r.status}): ${errText}`);
+        }
+        const d = await r.json();
+        let resText = p==='gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
+        
+        if (!resText || resText.trim().length === 0) {
+            throw new Error("AI 回應為空。可能原因：模型不支援視覺輸入或內容被過濾。");
+        }
+        return resText;
+    }
 </script>
 </body>
 </html>
