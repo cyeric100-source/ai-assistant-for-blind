@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 全能分頁版)</title>
+    <title>AI 視障助理 (2025 記憶增強版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -77,10 +77,10 @@
             color: var(--text-color);
             margin: 0; padding: 0;
             font-size: 1.1rem; line-height: 1.5;
-            height: 100dvh; /* 動態視口高度，解決手機鍵盤遮擋 */
+            height: 100dvh;
             display: grid;
-            grid-template-rows: auto 1fr auto; /* 頂部狀態 - 內容區 - 底部導航 */
-            overflow: hidden; /* 禁止整體滾動 */
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
         }
 
         /* 1. 頂部狀態列 */
@@ -119,7 +119,7 @@
             top: 0; left: 0; right: 0; bottom: 0;
             overflow-y: auto;
             padding: 15px;
-            display: none; /* 預設隱藏 */
+            display: none;
             flex-direction: column;
         }
 
@@ -129,7 +129,7 @@
         
         /* [Chat View] 特別佈局 */
         #view-chat {
-            padding: 0; /* 對話區不需要內距，由子元素處理 */
+            padding: 0; 
         }
         #chat-container {
             flex: 1;
@@ -331,7 +331,6 @@
         <section id="view-settings" class="view-section" role="tabpanel" aria-labelledby="tab-settings">
             <h2 tabindex="-1" id="settings-title">系統設定 (Settings)</h2>
 
-            <!-- 隱藏的 Details ID 保留給 JS 相容性，但 UI 上直接展開 -->
             <div id="settings-area">
                 <div class="settings-card">
                     <h3>🤖 AI 模型設定</h3>
@@ -437,16 +436,18 @@
     </nav>
 
     <script>
-        // --- 核心 1: 分頁切換邏輯 (View Controller) ---
+        // --- 全域變數新增：黏性圖片與歷史紀錄 ---
+        let stickyImage = { data: null, mime: null, count: 0 };
+        // chatHistory 結構現在更重要: [{role: 'user'|'assistant', content: 'txt', hasImage: bool}, ...]
+
+        // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
-            // 1. 隱藏所有分頁
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(el => {
                 el.classList.remove('active');
                 el.setAttribute('aria-selected', 'false');
             });
 
-            // 2. 顯示目標分頁
             const targetView = document.getElementById(`view-${tabId}`);
             const targetNav = document.getElementById(`nav-${tabId}`);
             
@@ -454,20 +455,12 @@
                 targetView.classList.add('active');
                 targetNav.classList.add('active');
                 targetNav.setAttribute('aria-selected', 'true');
-                
-                // 3. 焦點管理 (A11y)
-                // 嘗試將焦點移至該頁面的標題或第一個互動元素
-                if (tabId === 'chat') {
-                    // 對話頁聚焦輸入框
-                    document.getElementById('user-input').focus();
-                } else {
-                    const title = document.getElementById(`${tabId}-title`);
-                    if (title) title.focus();
-                }
+                if (tabId === 'chat') document.getElementById('user-input').focus();
+                else { const title = document.getElementById(`${tabId}-title`); if (title) title.focus(); }
             }
         }
 
-        // --- 核心 2: 原始邏輯 (保留所有變數與函數) ---
+        // --- 核心 2: 原始與新增邏輯 ---
         
         class UniversalTextNormalizer {
             static getScriptType(char) {
@@ -582,10 +575,8 @@
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
             if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
-            
-            // 映射快捷鍵到新分頁
             const actions = {
-                's': () => switchTab('settings'), // Alt+Shift+S 設定
+                's': () => switchTab('settings'),
                 'c': { id: 'copy-btn' },
                 't': { id: 'export-txt-btn' },
                 'h': { id: 'export-html-btn' },
@@ -598,16 +589,12 @@
                 '2': () => switchTab('tools'),
                 '3': () => switchTab('settings')
             };
-
             if (actions[key]) {
                 e.preventDefault(); ensureAudioContext();
                 if (typeof actions[key] === 'function') actions[key]();
                 else {
                     const target = document.getElementById(actions[key].id);
-                    if (target) {
-                        if (actions[key].type === 'focus') target.focus();
-                        else target.click();
-                    }
+                    if (target) { if (actions[key].type === 'focus') target.focus(); else target.click(); }
                 }
             }
         }
@@ -651,8 +638,6 @@
                 initDragAndDrop();
                 initEnterKey();
                 initVoiceButtonEvents();
-                
-                // 預設進入對話頁
                 switchTab('chat');
 
             } catch (e) { window.reportError("Init Error", e); }
@@ -666,7 +651,7 @@
             document.getElementById('tab-chat').classList.toggle('secondary', mode !== 'chat');
             document.getElementById('tab-ocr').classList.toggle('secondary', mode !== 'ocr');
             document.getElementById('tab-translate').classList.toggle('secondary', mode !== 'translate');
-            document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); // UI 反饋
+            document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
         }
 
         function setSpecificConfig(type) {
@@ -716,13 +701,16 @@
 
         function resetConversation() {
             chatHistory = []; 
+            // 重置黏性圖片
+            stickyImage = { data: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
             selectedFile = null;
             document.getElementById('upload-btn').innerText = "📁 檔案";
+            document.getElementById('upload-btn').classList.remove('active');
             document.getElementById('file-input').value = "";
             toggleExportButtons(false);
-            showTransientStatus("對話已清除");
+            showTransientStatus("對話與記憶已清除");
         }
 
         function handlePDFToolFileSelect() {
@@ -750,7 +738,6 @@
             if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF"); return; }
             
             resetConversation(); playAudioCue('start');
-            // 自動切換到對話頁以顯示進度
             switchTab('chat');
             
             const alwaysAI = document.getElementById('pdf-always-ai').checked;
@@ -805,7 +792,8 @@
                     
                     if (!isCanvasBlank(canvas)) {
                         const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                        let pageText = await callAI(ocrProvider, "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey, memoryPrompts.ocr);
+                        // 注意：OCR 過程不使用黏性圖片機制，它是獨立的
+                        let pageText = await callAI(ocrProvider, DEFAULT_OCR_PROMPT, [], "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
                         accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
                     }
                     canvas.remove(); await sleep(200); 
@@ -820,7 +808,8 @@
                 let transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
                 let transApiKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
                 updateStatusBar("正在翻譯...", "busy");
-                const res = await callAI(transProvider, `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
+                // 翻譯不帶歷史紀錄
+                const res = await callAI(transProvider, memoryPrompts.translate, [], `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey);
                 addMessage('assistant', UniversalTextNormalizer.normalize(res));
             } else {
                 let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
@@ -864,7 +853,6 @@
         function detectColumns(items, width) {
             const bins = new Array(Math.ceil(width/2)).fill(0);
             items.forEach(it => { for(let k=Math.floor(it.x/2); k<=Math.floor((it.x+it.w)/2); k++) if(k>=0 && k<bins.length) bins[k]=1; });
-            // Simplified Gap detection logic
             let gaps=[], cur={s:-1,w:0};
             for(let i=Math.floor(bins.length*0.2); i<Math.floor(bins.length*0.8); i++) {
                 if(bins[i]===0) { if(cur.s===-1) cur.s=i; cur.w++; }
@@ -1042,7 +1030,6 @@
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
             saveVoiceSettings(); 
             showTransientStatus("設定已儲存"); 
-            // 在設定頁點儲存後，無需跳轉，僅提示
         }
 
         function restoreDefaults() {
@@ -1070,13 +1057,14 @@
             if(f) { 
                 selectedFile=f; 
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
-                document.getElementById('upload-btn').classList.add('active'); // Visual feedback
+                document.getElementById('upload-btn').classList.add('active'); 
                 showTransientStatus("檔案已加入"); 
                 document.getElementById('user-input').focus();
             }
         }
         function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
 
+        // --- 核心 3: 升級版 handleSubmit (支援黏性圖片) ---
         async function handleSubmit(e) {
             e.preventDefault(); ensureAudioContext();
             const txt = document.getElementById('user-input').value.trim();
@@ -1087,44 +1075,107 @@
             const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
             
             try {
-                let input = txt; let fileData = null; let mime = null; let skipFile = false;
+                let input = txt; 
+                let fileData = null; 
+                let mime = null;
+                let isPDF = false;
+
+                // A. 檔案處理邏輯
                 if(selectedFile) {
-                    if(selectedFile.type==='application/pdf') {
+                    if(selectedFile.type === 'application/pdf') {
+                        isPDF = true;
                         const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                         if(pdfText) { 
                             const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
-                            input=`[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; skipFile=true; 
+                            input = `[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; 
                         }
-                    } else { fileData=await readFileAsBase64(selectedFile); mime=selectedFile.type; }
+                    } else if (selectedFile.type.startsWith('image/')) {
+                        fileData = await readFileAsBase64(selectedFile); 
+                        mime = selectedFile.type;
+                        // 設定黏性圖片 (Sticky Image)
+                        stickyImage = { data: fileData, mime: mime, count: 3 };
+                    }
+                } 
+                // B. 若無新圖片，檢查是否有黏性圖片
+                else if (stickyImage.count > 0 && stickyImage.data) {
+                    fileData = stickyImage.data;
+                    mime = stickyImage.mime;
+                    stickyImage.count--; // 扣除一次機會
+                    if (stickyImage.count === 0) showTransientStatus("圖片追問次數已用完");
+                    else showTransientStatus(`圖片追問模式 (剩餘 ${stickyImage.count} 次)`);
                 }
+
+                // 顯示使用者訊息
+                addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[圖片追問]"));
                 
-                addMessage('user', txt||(selectedFile ? `[檔案: ${selectedFile.name}]` : "[無內容]"));
-                document.getElementById('user-input').value=""; 
-                document.getElementById('upload-btn').innerText="📁 檔案"; 
+                document.getElementById('user-input').value = ""; 
+                document.getElementById('upload-btn').innerText = "📁 檔案"; 
                 document.getElementById('upload-btn').classList.remove('active');
-                selectedFile=null;
+                selectedFile = null;
                 
-                const res = await callAI(document.getElementById('provider-select').value, input, skipFile?null:fileData, mime, ctl.signal, null, null, memoryPrompts.chat);
-                const ai = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
-                setTimeout(() => { ai.focus(); }, 100);
-                chatHistory.push({role:'user',content:input}); chatHistory.push({role:'assistant',content:res});
+                // 呼叫 AI (傳入歷史紀錄)
+                const res = await callAI(
+                    document.getElementById('provider-select').value, 
+                    document.getElementById('system-prompt').value, // 強制每次讀取 System Prompt
+                    chatHistory, 
+                    input, 
+                    fileData, 
+                    mime, 
+                    ctl.signal
+                );
+
+                const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
+                setTimeout(() => { aiMsg.focus(); }, 100);
+
+                // 更新歷史紀錄 (只存文字，節省 Token)
+                chatHistory.push({role: 'user', content: input}); 
+                chatHistory.push({role: 'assistant', content: res});
+                
+                // 保持歷史紀錄長度 (最近 10 則)
+                if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+
                 playAudioCue('success'); showReadyStatus();
             } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
         }
 
-        async function callAI(p, txt, file, mime, sig, ovModel, ovKey, ovSystemPrompt) {
+        // --- 核心 4: 升級版 callAI (支援歷史與系統指令打包) ---
+        async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
             const k = ovKey || document.getElementById('api-key').value; 
             const m = ovModel || currentActiveModelId;
-            const sys = ovSystemPrompt || document.getElementById('system-prompt').value; 
             
             if(!k) throw new Error("需 API Key");
             let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
             
+            // --- Gemini 封包建構 ---
             if(p==='gemini') {
                 url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
-                let parts = file ? [{inline_data:{mime_type:mime||"image/jpeg", data:file}}, {text:txt}] : [{text:txt}];
-                body = { system_instruction:{parts:[{text:sys}]}, contents:[{role:"user", parts:parts}] };
-            } else {
+                
+                // 1. 系統指令
+                let bodyContent = { 
+                    system_instruction: { parts: [{ text: sysPrompt }] },
+                    contents: [] 
+                };
+
+                // 2. 歷史紀錄 (轉為 Gemini 格式)
+                history.forEach(msg => {
+                    bodyContent.contents.push({
+                        role: msg.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: msg.content }]
+                    });
+                });
+
+                // 3. 當前訊息 (包含圖片)
+                let currentParts = [];
+                if (file) {
+                    currentParts.push({ inline_data: { mime_type: mime || "image/jpeg", data: file } });
+                }
+                currentParts.push({ text: txt });
+                bodyContent.contents.push({ role: "user", parts: currentParts });
+
+                body = bodyContent;
+            } 
+            // --- OpenAI / OpenRouter 封包建構 ---
+            else {
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
                     headers['HTTP-Referer'] = 'https://ai-vision.app'; headers['X-Title'] = 'AI Vision';
@@ -1134,8 +1185,27 @@
                 else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
                 else url = "https://api.groq.com/openai/v1/chat/completions";
 
-                let content = file ? [{type:"text", text:txt}, {type:"image_url", image_url:{url:`data:${mime};base64,${file}`}}] : txt;
-                body = { ...body, model:m, messages:[{role:"system",content:sys}, {role:"user",content:content}], temperature:0.3 };
+                let messages = [];
+
+                // 1. 系統指令
+                messages.push({ role: "system", content: sysPrompt });
+
+                // 2. 歷史紀錄
+                history.forEach(msg => {
+                    messages.push({ role: msg.role, content: msg.content });
+                });
+
+                // 3. 當前訊息
+                let currentContent = [];
+                if (file) {
+                    currentContent.push({ type: "text", text: txt });
+                    currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
+                } else {
+                    currentContent = txt;
+                }
+                messages.push({ role: "user", content: currentContent });
+
+                body = { ...body, model: m, messages: messages, temperature: 0.3 };
             }
             
             const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:sig});
