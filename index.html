@@ -752,7 +752,11 @@ Translate the input text fully and fluently. Fix broken lines.`;
     let recognition = null; 
     let mediaRecorder = null;
     let audioChunks = [];
-    let chatHistory = [];
+    
+    // 【新功能】對話記憶與黏性圖片狀態
+    let globalChatHistory = []; 
+    let stickyImage = { data: null, mime: null, remaining: 0 };
+    
     let audioContext = null;
     let allCurrentModels = [];
     let isVoiceRecording = false;
@@ -926,7 +930,10 @@ Translate the input text fully and fluently. Fix broken lines.`;
     }
 
     function resetConversation() {
-        chatHistory = []; 
+        // [新功能] 清除記憶與黏性圖片
+        globalChatHistory = [];
+        stickyImage = { data: null, mime: null, remaining: 0 };
+        
         document.getElementById('chat-output').innerHTML = ""; 
         document.getElementById('user-input').value = "";
         selectedFile = null;
@@ -1002,6 +1009,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 sourceMode = "image";
             }
 
+            // PDF 處理時，我們使用特殊的 callAI 調用，這部分通常不依賴連續對話歷史，因此傳送空歷史
             await performAIProcessing(file, sourceMode, extractedText, needTranslate);
 
         } catch (e) {
@@ -1012,6 +1020,9 @@ Translate the input text fully and fluently. Fix broken lines.`;
     async function performAIProcessing(file, sourceMode, textData, needTranslate) {
         const controller = new AbortController(); 
         let accumulatedText = "";
+
+        // 注意：OCR 與 PDF 翻譯流程通常是單次任務，不一定需要混入一般對話歷史。
+        // 為保持簡單與避免污染主對話，這裡我們暫時不使用 globalChatHistory。
 
         if (sourceMode === "image") {
             let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
@@ -1048,7 +1059,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                 
                 if (isCanvasBlank(canvas)) {
-                    // [修正] 不加入 ##，僅使用純文字標記
                     accumulatedText += `[Page ${i}]\n(空白頁)\n\n`;
                     Logger.debug("OCR", `Page ${i} is blank`);
                     canvas.remove(); continue; 
@@ -1058,7 +1068,8 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 let retry = 0; let pageText = "";
                 while(retry < 3) {
                     try {
-                        pageText = await callAI(ocrProvider, "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey, ocrSystemPrompt);
+                        // OCR 不使用歷史記錄
+                        pageText = await callAI_Direct(ocrProvider, "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey, ocrSystemPrompt);
                         if (!pageText || pageText.trim().length === 0) pageText = "(無內容)";
                         break;
                     } catch(e) { 
@@ -1068,8 +1079,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
                     }
                 }
                 
-                // OCR 結果也必須經過語義正規化
-                // [修正] 不加入 ##，僅使用純文字標記
                 accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
                 canvas.remove(); await sleep(200); 
             }
@@ -1089,12 +1098,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
             NotificationSystem.show("正在翻譯全文...", "busy");
             Logger.info("Translate", `Translating with ${transProvider} / ${transModel}`);
             const transInput = `[SOURCE TEXT]:\n${accumulatedText}`;
-            const finalRes = await callAI(transProvider, transInput, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
+            // 翻譯不使用歷史記錄
+            const finalRes = await callAI_Direct(transProvider, transInput, null, null, controller.signal, transModel, transApiKey, memoryPrompts.translate);
             
             addMessage('assistant', UniversalTextNormalizer.normalize(finalRes));
         } else {
             NotificationSystem.show("處理完成", "success");
-            // [修正] 顯示前才將 [Page X] 轉換為 ## [Page X] 標題
             let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
             addMessage('assistant', displayText);
         }
@@ -1112,7 +1121,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
         else { el.classList.remove('active'); el.innerText = ""; }
     }
 
-    // --- 【核心引擎 2 (升級版)】 Advanced PDF Text Engine (XY-Cut & Adaptive) ---
+    // --- Advanced PDF Text Engine (XY-Cut & Adaptive) ---
     async function extractTextFromPDF_Accurate(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
@@ -1121,66 +1130,51 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 cMapUrl: './pdf-dist/cmaps/',
                 cMapPacked: true,
                 standardFontDataUrl: './pdf-dist/standard_fonts/',
-                disableCombineTextItems: false // 保持原始碎片，便於精確分析
+                disableCombineTextItems: false
             });
             const pdf = await loadingTask.promise;
             let fullText = "";
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                
-                // --- 策略 1: 嘗試 Tagged PDF (Gold Standard) ---
                 try {
                     const structTree = await page.getStructTree();
-                    if (structTree) {
-                        Logger.debug("PDF", `Page ${i} has StructTree (Tagged PDF detected)`);
-                    }
-                } catch(e) { /* No struct tree, ignore */ }
+                    if (structTree) Logger.debug("PDF", `Page ${i} has StructTree`);
+                } catch(e) {}
 
-                // --- 策略 2: Advanced Layout Analysis (XY-Cut) ---
                 const content = await page.getTextContent({ includeMarkedContent: true });
                 const items = content.items.filter(item => item.str && item.str.trim().length > 0);
 
                 if (items.length === 0) {
-                    // [修正] 不加入 ##，僅使用純文字標記
                     fullText += `[Page ${i}]\n\n`;
                     continue;
                 }
 
-                // A. 預處理：計算平均字寬與正規化座標
                 const viewport = page.getViewport({ scale: 1.0 });
                 const normalizedItems = items.map(item => {
                     const tx = item.transform;
                     return {
                         str: item.str,
                         x: tx[4],
-                        y: viewport.height - tx[5], // Flip Y
+                        y: viewport.height - tx[5],
                         w: item.width,
                         h: item.height || 10,
                         hasEOL: item.hasEOL,
-                        fontHeight: Math.abs(tx[3]) // 字體實際高度
+                        fontHeight: Math.abs(tx[3])
                     };
                 });
 
-                // B. 執行 XY-Cut 分欄檢測
                 const columns = detectColumns(normalizedItems, viewport.width);
                 let pageStr = "";
                 
-                // C. 針對每一欄進行行排序與組裝
                 for (const columnItems of columns) {
                     columnItems.sort((a, b) => {
                         const rowTolerance = Math.min(a.fontHeight, b.fontHeight) * 0.5;
-                        if (Math.abs(a.y - b.y) < rowTolerance) {
-                            return a.x - b.x; // 同一行，按 X 排序
-                        }
-                        return a.y - b.y; // 不同行，按 Y 排序
+                        if (Math.abs(a.y - b.y) < rowTolerance) return a.x - b.x;
+                        return a.y - b.y;
                     });
-
-                    // 使用升級版的智能黏合邏輯
                     pageStr += assembleLinesAdaptive(columnItems) + "\n";
                 }
-
-                // [修正] 不加入 ##，僅使用純文字標記
                 fullText += `[Page ${i}]\n${pageStr}\n\n`;
             }
             return fullText;
@@ -1190,27 +1184,18 @@ Translate the input text fully and fluently. Fix broken lines.`;
         }
     }
 
-    // --- 輔助算法：XY-Cut 分欄偵測 ---
     function detectColumns(items, pageWidth) {
-        // 簡單版 XY-Cut：尋找頁面中央是否存在顯著的垂直空白帶
         const bucketSize = 2;
         const bins = new Array(Math.ceil(pageWidth / bucketSize)).fill(0);
-        
         items.forEach(item => {
             const startBin = Math.floor(item.x / bucketSize);
             const endBin = Math.floor((item.x + item.w) / bucketSize);
-            for(let k = startBin; k <= endBin; k++) {
-                if(k >= 0 && k < bins.length) bins[k] = 1; // 標記為有內容
-            }
+            for(let k = startBin; k <= endBin; k++) if(k >= 0 && k < bins.length) bins[k] = 1;
         });
-
-        // 搜尋範圍：頁面中間 20% ~ 80%
         const searchStart = Math.floor(bins.length * 0.2);
         const searchEnd = Math.floor(bins.length * 0.8);
-        
         let gaps = [];
         let currentGap = { start: -1, width: 0 };
-        
         for (let i = searchStart; i < searchEnd; i++) {
             if (bins[i] === 0) {
                 if (currentGap.start === -1) currentGap.start = i;
@@ -1222,63 +1207,42 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 }
             }
         }
-
         const splitThreshold = bins.length * 0.02;
         const validGap = gaps.reduce((max, gap) => gap.width > max.width ? gap : max, { width: 0 });
-
         if (validGap.width > splitThreshold) {
             const splitX = (validGap.start + validGap.width / 2) * bucketSize;
             const leftCol = items.filter(it => it.x + it.w < splitX);
             const rightCol = items.filter(it => it.x >= splitX);
             return [leftCol, rightCol];
         }
-
         return [items];
     }
 
-    // --- 【修正 2】升級版輔助算法：適應性智能文字組裝 (Smart Glue Matrix) ---
     function assembleLinesAdaptive(items) {
         if (items.length === 0) return "";
-        
         let result = "";
         let lastItem = null;
-        
         for (let item of items) {
             if (lastItem) {
-                // 1. 換行判斷
                 const rowTolerance = Math.min(lastItem.fontHeight, item.fontHeight) * 0.5;
                 const isNewLine = (item.y - lastItem.y > rowTolerance) || lastItem.hasEOL;
-
                 if (isNewLine) {
                     result += "\n";
                 } else {
-                    // 2. 智能黏合矩陣 (Smart Glue Matrix)
                     const prevChar = lastItem.str.slice(-1);
                     const currChar = item.str.charAt(0);
                     const typeA = UniversalTextNormalizer.getScriptType(prevChar);
                     const typeB = UniversalTextNormalizer.getScriptType(currChar);
-
                     const gap = item.x - (lastItem.x + lastItem.w);
-                    
-                    // 規則 A: SEA (泰/寮/高棉) 或 RTL 語言，強制黏合 (無視 gap)
                     if (typeA === 'sea' || typeB === 'sea' || typeA === 'rtl' || typeB === 'rtl') {
-                        // 僅在極大間距(如 Tab)時才分開
                         if (gap > item.fontHeight * 2) result += " "; 
                     }
-                    // 規則 B: CJK 之間，或 CJK 與 Latin/Num 混合 -> 強制黏合 (依用戶要求無多餘空格)
-                    else if ((typeA === 'cjk' && typeB === 'cjk') || 
-                             (typeA === 'cjk' && typeB === 'latin') || 
-                             (typeA === 'latin' && typeB === 'cjk')) {
-                         // 除非間距大到像 Tab，否則黏合
+                    else if ((typeA === 'cjk' && typeB === 'cjk') || (typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) {
                          if (gap > item.fontHeight * 1.5) result += " ";
                     }
-                    // 規則 C: 歐語系 (Latin/Latin) -> 依閾值判斷
                     else {
-                        // 閾值：字體高度的 35%
                         const spaceThreshold = item.fontHeight * 0.35;
-                        if (gap > spaceThreshold) {
-                            result += " ";
-                        }
+                        if (gap > spaceThreshold) result += " ";
                     }
                 }
             }
@@ -1301,7 +1265,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
             recognition.lang = 'zh-HK'; 
             recognition.continuous = true; 
             recognition.interimResults = true; 
-            
             recognition.onstart = () => { 
                 isVoiceRecording = true;
                 const btn = document.getElementById('voice-btn');
@@ -1310,7 +1273,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 NotificationSystem.show('正在聆聽...', 'busy');
                 playAudioCue('start'); 
             };
-            
             recognition.onresult = (e) => {
                 let t = ''; 
                 for (let i = e.resultIndex; i < e.results.length; ++i) {
@@ -1318,14 +1280,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 }
                 if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
             };
-            
             recognition.onerror = (e) => { 
                 if (e.error !== 'aborted' && e.error !== 'no-speech') {
                     NotificationSystem.show('語音辨識錯誤', 'error');
                 }
                 stopVoiceInputUI();
             };
-            
             recognition.onend = () => { 
                 if (isVoiceRecording) { playAudioCue('abort'); }
                 stopVoiceInputUI();
@@ -1337,7 +1297,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
         ensureAudioContext(); 
         if (isVoiceRecording) return;
         const engine = document.getElementById('voice-engine').value;
-        
         if (engine === 'browser') {
             if (recognition) { try { recognition.start(); } catch(e) {} }
         } else {
@@ -1355,9 +1314,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
                 document.getElementById('voice-btn').classList.add('recording');
                 document.getElementById('voice-btn').innerText = "放開傳送...";
                 playAudioCue('start');
-            } catch (e) { 
-                NotificationSystem.show('麥克風啟動失敗', 'error');
-            }
+            } catch (e) { NotificationSystem.show('麥克風啟動失敗', 'error'); }
         }
     }
 
@@ -1367,7 +1324,6 @@ Translate the input text fully and fluently. Fix broken lines.`;
         const engine = document.getElementById('voice-engine').value;
         playAudioCue('success');
         isVoiceRecording = false; 
-
         if (engine === 'browser' && recognition) {
             recognition.stop();
         } else if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -1404,25 +1360,12 @@ Translate the input text fully and fluently. Fix broken lines.`;
     function initDragAndDrop() { const d = document.getElementById('user-input'); d.ondragover = e => {e.preventDefault(); d.classList.add('dragover')}; d.ondragleave = () => d.classList.remove('dragover'); d.ondrop = e => {e.preventDefault(); d.classList.remove('dragover'); handleFileSelect(e.dataTransfer.files[0]);}; }
     function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
     
-    // 兼容舊函數，轉接到新的 NotificationSystem
-    function updateStatusBar(t, s='ready') { 
-        // 舊的直接調用改為不帶 queue 的直接顯示 (相容性)
-        const b = document.getElementById('status-bar');
-        b.innerText = t; b.className = s;
-        // 簡單映射
-        const typeMap = { 'ready': 'info', 'busy': 'busy', 'error': 'error', 'recording': 'busy' };
-        // 若使用舊函數，就不走 Queue，直接更新 DOM
-    }
-    
+    function updateStatusBar(t, s='ready') { NotificationSystem.show(t, s === 'error' ? 'error' : (s === 'busy' ? 'busy' : 'info')); }
     function showReadyStatus() { NotificationSystem.show("準備就緒", "info"); }
-    function showTransientStatus(m, t='success') { 
-        // 映射到新系統
-        NotificationSystem.show(m, t === 'error' ? 'error' : 'success');
-    }
+    function showTransientStatus(m, t='success') { NotificationSystem.show(m, t === 'error' ? 'error' : 'success'); }
     
     function addMessage(role, content) {
         const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
-        // 修正 3：加入 HTML dir="auto" 屬性確保顯示正確
         div.innerHTML = `<h1 class="msg-heading">${role==='user'?'輸入問題：':(role==='error'?'發生錯誤：':'回應結果：')}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
         if(role==='assistant') {
             const btn = document.createElement('button'); btn.className='mini-copy-btn'; btn.innerText='複製 (Alt+Shift+R)';
@@ -1526,6 +1469,7 @@ Translate the input text fully and fluently. Fix broken lines.`;
     }
     function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
 
+    // --- 【修正 3】 對話核心邏輯 (支援歷史與圖片追問) ---
     async function handleSubmit(e) {
         e.preventDefault(); ensureAudioContext();
         const txt = document.getElementById('user-input').value.trim();
@@ -1536,80 +1480,135 @@ Translate the input text fully and fluently. Fix broken lines.`;
         const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
         
         try {
-            let input = txt; let fileData = null; let mime = null; let skipFile = false;
+            let input = txt; 
+            let fileData = null; 
+            let mime = null; 
+            
+            // 1. 處理檔案上傳
             if(selectedFile) {
                 if(selectedFile.type==='application/pdf') {
-                    // 使用最新的 Advanced Layout Engine (XY-Cut)
+                    // PDF 轉為文字模式，不觸發黏性圖片邏輯
                     const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                     if(pdfText) { 
-                        // **關鍵步驟**：進入 Prompt 前確保已經正規化
                         const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
                         input=`[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; 
-                        skipFile=true; 
+                        // 重置黏性圖片，避免混淆
+                        stickyImage = { data: null, mime: null, remaining: 0 };
                     }
                 } else { 
-                    fileData=await readFileAsBase64(selectedFile); mime=selectedFile.type; 
+                    // 圖片上傳：設定黏性狀態 (3次追問)
+                    fileData = await readFileAsBase64(selectedFile); 
+                    mime = selectedFile.type;
+                    stickyImage = { data: fileData, mime: mime, remaining: 3 }; // 包含本次共 3 次
+                    Logger.info("Chat", "New image uploaded, sticky count set to 3");
+                }
+            } else {
+                // 沒有新檔案，檢查是否有黏性圖片
+                if (stickyImage.remaining > 0 && stickyImage.data) {
+                    fileData = stickyImage.data;
+                    mime = stickyImage.mime;
+                    Logger.info("Chat", `Using sticky image (${stickyImage.remaining} turns left)`);
                 }
             }
             
-            const res = await callAI(document.getElementById('provider-select').value, input, skipFile?null:fileData, mime, ctl.signal, null, null, memoryPrompts.chat);
-            document.getElementById('user-input').value=""; document.getElementById('upload-btn').innerText="選擇檔案 (Alt+Shift+U)"; selectedFile=null;
-            addMessage('user', txt||"[檔案]"); 
-            // AI 回應也進行標準化
+            // 2. 構建本次用戶訊息物件
+            let currentUserTurn = { role: 'user', text: input, images: [] };
+            if (fileData && mime) {
+                currentUserTurn.images.push({ data: fileData, mime: mime });
+            }
+
+            // 3. 更新 UI
+            addMessage('user', txt || (fileData ? "[圖片]" : "[檔案]")); 
+            document.getElementById('user-input').value=""; 
+            document.getElementById('upload-btn').innerText="選擇檔案 (Alt+Shift+U)"; 
+            selectedFile=null;
+
+            // 4. 呼叫 AI (傳送完整歷史 + 本次訊息)
+            const historyToSend = [...globalChatHistory, currentUserTurn];
+            const res = await callAI_WithHistory(document.getElementById('provider-select').value, historyToSend, ctl.signal);
+            
+            // 5. 更新 UI 與 歷史
             const ai = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
             setTimeout(() => { ai.focus(); }, 100);
-            chatHistory.push({role:'user',content:input}); chatHistory.push({role:'assistant',content:res});
+            
+            // 成功後才寫入歷史
+            globalChatHistory.push(currentUserTurn);
+            globalChatHistory.push({ role: 'model', text: res });
+
+            // 6. 扣除黏性圖片次數
+            if (stickyImage.remaining > 0) {
+                stickyImage.remaining--;
+            }
+
             playAudioCue('success'); showReadyStatus();
         } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
     }
 
-    async function callAI(p, txt, file, mime, sig, ovModel, ovKey, ovSystemPrompt) {
-        const k = ovKey || document.getElementById('api-key').value; 
-        const m = ovModel || currentActiveModelId;
-        const sys = ovSystemPrompt || document.getElementById('system-prompt').value; 
+    // 新版 AI 呼叫函數，支援歷史紀錄
+    async function callAI_WithHistory(p, history, sig) {
+        const k = document.getElementById('api-key').value; 
+        const m = currentActiveModelId;
+        const sys = document.getElementById('system-prompt').value; 
         
         if(!k) throw new Error("需 API Key");
         let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
         
-        Logger.info("AI", `Calling ${p} model ${m}`);
-
-        const isMultiImage = Array.isArray(file);
-        if (isMultiImage) { mime = "image/jpeg"; }
+        Logger.info("AI", `Calling ${p} model ${m} with history (${history.length} turns)`);
 
         if(p==='gemini') {
             url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
-            let parts = [];
-            if (isMultiImage) {
-                file.forEach(b64 => parts.push({inline_data:{mime_type:"image/jpeg", data:b64}}));
-                parts.push({text:txt});
-            } else {
-                parts = file ? [{inline_data:{mime_type:mime, data:file}}, {text:txt}] : [{text:txt}];
-            }
-            body = { system_instruction:{parts:[{text:sys}]}, contents:[{role:"user", parts:parts}] };
+            
+            // 轉換歷史格式為 Gemini Contents
+            const contents = history.map(turn => {
+                const parts = [];
+                // 優先放入圖片 (inline_data)
+                if (turn.images && turn.images.length > 0) {
+                    turn.images.forEach(img => {
+                        parts.push({ inline_data: { mime_type: img.mime || "image/jpeg", data: img.data } });
+                    });
+                }
+                // 再放入文字
+                if (turn.text) parts.push({ text: turn.text });
+                return { role: turn.role === 'user' ? 'user' : 'model', parts: parts };
+            });
+
+            body = { system_instruction:{parts:[{text:sys}]}, contents: contents };
         } else {
+            // OpenAI / OpenRouter / Groq 格式
             if (p === 'openrouter') {
                 url = "https://openrouter.ai/api/v1/chat/completions";
-                headers['HTTP-Referer'] = 'https://ai-vision-helper.app'; // CORS requirement
+                headers['HTTP-Referer'] = 'https://ai-vision-helper.app'; 
                 headers['X-Title'] = 'AI Vision Helper';
                 if(document.getElementById('openrouter-web-search').checked) body.plugins = [{id:"web"}];
-            } else if (p === 'mistral') {
-                url = "https://api.mistral.ai/v1/chat/completions";
-            } else if (p === 'perplexity') {
-                url = "https://api.perplexity.ai/chat/completions";
-            } else if (p === 'openai') {
-                url = "https://api.openai.com/v1/chat/completions";
-            } else {
-                url = "https://api.groq.com/openai/v1/chat/completions";
-            }
+            } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
+            else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
+            else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
+            else url = "https://api.groq.com/openai/v1/chat/completions";
 
-            let content = [];
-            if (file) {
-                content.push({type:"text", text:txt});
-                content.push({type:"image_url", image_url:{url:`data:${mime};base64,${file}`}});
-            } else {
-                content = txt;
-            }
-            body = { ...body, model:m, messages:[{role:"system",content:sys}, {role:"user",content:content}], temperature:0.3 };
+            const messages = [{role:"system", content:sys}];
+            
+            history.forEach(turn => {
+                if (turn.role === 'model') {
+                    messages.push({ role: 'assistant', content: turn.text });
+                } else {
+                    // User turn
+                    let content = [];
+                    if (turn.text) content.push({ type: "text", text: turn.text });
+                    if (turn.images && turn.images.length > 0) {
+                        turn.images.forEach(img => {
+                            content.push({ type: "image_url", image_url: { url: `data:${img.mime || "image/jpeg"};base64,${img.data}` } });
+                        });
+                    }
+                    // 如果只有文字，簡化結構 (相容性)
+                    if (content.length === 1 && content[0].type === 'text') {
+                        messages.push({ role: 'user', content: turn.text });
+                    } else {
+                        messages.push({ role: 'user', content: content });
+                    }
+                }
+            });
+
+            body = { ...body, model:m, messages: messages, temperature:0.3 };
         }
         
         const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:sig});
@@ -1624,6 +1623,31 @@ Translate the input text fully and fluently. Fix broken lines.`;
             throw new Error("AI 回應為空。可能原因：模型不支援視覺輸入或內容被過濾。");
         }
         return resText;
+    }
+
+    // 用於 PDF OCR/翻譯的直接呼叫 (不使用歷史)
+    async function callAI_Direct(p, txt, file, mime, sig, ovModel, ovKey, ovSystemPrompt) {
+        // 構建一個單次的 Turn，重用 callAI_WithHistory 邏輯
+        const singleTurn = { role: 'user', text: txt, images: [] };
+        if (file) singleTurn.images.push({ data: file, mime: mime });
+        
+        // 暫時替換全域設定以支援 Override
+        const originalModel = currentActiveModelId;
+        const originalKey = document.getElementById('api-key').value;
+        const originalSys = document.getElementById('system-prompt').value;
+        
+        if(ovModel) currentActiveModelId = ovModel;
+        if(ovKey) document.getElementById('api-key').value = ovKey;
+        if(ovSystemPrompt) document.getElementById('system-prompt').value = ovSystemPrompt;
+        
+        try {
+            return await callAI_WithHistory(p, [singleTurn], sig);
+        } finally {
+            // 還原
+            currentActiveModelId = originalModel;
+            document.getElementById('api-key').value = originalKey;
+            document.getElementById('system-prompt').value = originalSys;
+        }
     }
 </script>
 </body>
