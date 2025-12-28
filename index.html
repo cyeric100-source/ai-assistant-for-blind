@@ -221,23 +221,26 @@
         #voice-btn.recording { background-color: #ff3333 !important; animation: pulse 1s infinite; }
         #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
-        /* Utility Row & Toggle Button */
+        /* Utility Row & Checkbox */
         .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
         .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; }
 
-        /* 特製的 Toggle Checkbox Button */
-        .toggle-label {
-            display: inline-flex; align-items: center; justify-content: center;
+        /* 標準 Checkbox 樣式 (對話頁專用) */
+        .chat-check-btn {
+            display: inline-flex; align-items: center;
             background: #333; border: 1px solid #777; color: #fff;
-            padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;
-            cursor: pointer; user-select: none; white-space: nowrap;
-            margin-bottom: 0;
+            padding: 8px 12px; border-radius: 6px;
+            font-size: 0.9rem; cursor: pointer; white-space: nowrap;
+            user-select: none;
         }
-        .toggle-label input { display: none; } /* 隱藏原生 checkbox */
-        .toggle-label span { display: flex; align-items: center; gap: 5px; }
-        /* 勾選時的狀態：黃色邊框 */
-        .toggle-label:has(input:checked) {
-            background: #2a2a00; border-color: var(--accent-color); color: var(--accent-color);
+        .chat-check-btn input {
+            width: 18px; height: 18px; margin: 0 8px 0 0;
+            accent-color: var(--accent-color); /* 強調色 */
+        }
+        /* 勾選時高亮 */
+        .chat-check-btn:has(input:checked) {
+            border-color: var(--accent-color);
+            background: #2a2a00;
         }
 
         /* 設定頁樣式 */
@@ -302,10 +305,10 @@
                     <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
                     
-                    <!-- 2. 暫停傳送 Toggle (新增) -->
-                    <label class="toggle-label" title="若勾選，選檔後不會立即發送，允許輸入文字">
+                    <!-- 2. 暫停傳送 Checkbox (已改為標準核取方塊) -->
+                    <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
-                        <span>✋ 暫停發送</span>
+                        <span>暫停發送</span>
                     </label>
 
                     <!-- 3. 清除按鈕 -->
@@ -460,10 +463,11 @@
     </nav>
 
     <script>
-        // --- 全域變數新增：黏性圖片與歷史紀錄 ---
+        // --- 全域變數新增：黏性圖片、歷史紀錄、上一個分頁 ---
         let stickyImage = { data: null, mime: null, count: 0 };
+        let lastActiveTabId = 'chat'; // 預設為對話頁
         
-        // --- 核心 1: 分頁切換邏輯 ---
+        // --- 核心 1: 分頁切換邏輯 (升級版：記錄上一個頁面) ---
         function switchTab(tabId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(el => {
@@ -480,6 +484,11 @@
                 targetNav.setAttribute('aria-selected', 'true');
                 if (tabId === 'chat') document.getElementById('user-input').focus();
                 else { const title = document.getElementById(`${tabId}-title`); if (title) title.focus(); }
+            }
+            
+            // 如果切換到的不是設定頁，則記錄此頁面為「上一個活躍頁面」
+            if (tabId !== 'settings') {
+                lastActiveTabId = tabId;
             }
         }
 
@@ -547,8 +556,9 @@
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE\nTranslator (Traditional Chinese - Hong Kong).\n# TASK\nTranslate the input text fully and fluently. Fix broken lines.`;
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v2";
 
+        // 更新 Gemini 預設模型為 gemini-3.0-flash (2025 年最新)
         const PROVIDERS = {
-            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-2.0-flash-exp", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
+            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-3.0-flash", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-3.0-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-exp:free", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
@@ -661,7 +671,7 @@
                 initVoiceButtonEvents();
                 switchTab('chat');
                 
-                // 確保暫停傳送按鈕不記憶，預設不勾選
+                // 確保暫停傳送核取方塊不記憶，預設不勾選
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
 
@@ -1051,7 +1061,10 @@
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
             saveVoiceSettings(); 
-            showTransientStatus("設定已儲存"); 
+            showTransientStatus("設定已儲存");
+            
+            // 自動返回上一個頁面
+            switchTab(lastActiveTabId || 'chat');
         }
 
         function restoreDefaults() {
