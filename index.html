@@ -221,8 +221,24 @@
         #voice-btn.recording { background-color: #ff3333 !important; animation: pulse 1s infinite; }
         #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
-        .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; }
-        .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; }
+        /* Utility Row & Toggle Button */
+        .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
+        .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; }
+
+        /* 特製的 Toggle Checkbox Button */
+        .toggle-label {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #333; border: 1px solid #777; color: #fff;
+            padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;
+            cursor: pointer; user-select: none; white-space: nowrap;
+            margin-bottom: 0;
+        }
+        .toggle-label input { display: none; } /* 隱藏原生 checkbox */
+        .toggle-label span { display: flex; align-items: center; gap: 5px; }
+        /* 勾選時的狀態：黃色邊框 */
+        .toggle-label:has(input:checked) {
+            background: #2a2a00; border-color: var(--accent-color); color: var(--accent-color);
+        }
 
         /* 設定頁樣式 */
         .settings-card {
@@ -283,8 +299,19 @@
             <!-- 輸入控制區 (固定在對話頁底部) -->
             <div id="input-area-wrapper">
                 <div class="utility-row">
-                    <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案</button>
+                    <!-- 1. 檔案上傳按鈕 -->
+                    <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
+                    
+                    <!-- 2. 暫停傳送 Toggle (新增) -->
+                    <label class="toggle-label" title="若勾選，選檔後不會立即發送，允許輸入文字">
+                        <input type="checkbox" id="pause-send">
+                        <span>✋ 暫停發送</span>
+                    </label>
+
+                    <!-- 3. 清除按鈕 -->
                     <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()">🗑️ 清除</button>
+                    
+                    <!-- 隱藏的 File Input -->
                     <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
                 </div>
                 
@@ -386,9 +413,6 @@
                     <label class="check-btn">
                         <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
-                    <label class="check-btn">
-                        <input type="checkbox" id="pause-send"> <span>暫停傳送 (Draft Mode)</span>
-                    </label>
                     <label class="check-btn" id="openrouter-settings" class="hidden">
                         <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
                     </label>
@@ -438,8 +462,7 @@
     <script>
         // --- 全域變數新增：黏性圖片與歷史紀錄 ---
         let stickyImage = { data: null, mime: null, count: 0 };
-        // chatHistory 結構現在更重要: [{role: 'user'|'assistant', content: 'txt', hasImage: bool}, ...]
-
+        
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -519,7 +542,6 @@
             showReadyStatus();
         });
 
-        // Prompt Defaults
         const DEFAULT_CHAT_PROMPT = `# 角色設定\n你是一位專為香港視障人士服務的 AI 助理。\n# 規則\n1. **語言**：繁體中文（香港）。\n2. **格式**：使用 Markdown。\n3. **精簡**：重點置前。`;
         const DEFAULT_OCR_PROMPT = `# SYSTEM ROLE\nOCR Engine for visually impaired users.\n# TASK\nTranscribe text from the image strictly.\n# RULES\n1. **Verbatim**: No summaries.\n2. **Format**: Markdown.`;
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE\nTranslator (Traditional Chinese - Hong Kong).\n# TASK\nTranslate the input text fully and fluently. Fix broken lines.`;
@@ -582,7 +604,6 @@
                 'h': { id: 'export-html-btn' },
                 'u': { id: 'upload-btn' },
                 'n': { id: 'new-chat-btn' },
-                'p': { id: 'pause-send' },
                 'k': { id: 'submit-btn' },
                 'i': { id: 'user-input', type: 'focus' },
                 '1': () => switchTab('chat'),
@@ -639,6 +660,10 @@
                 initEnterKey();
                 initVoiceButtonEvents();
                 switchTab('chat');
+                
+                // 確保暫停傳送按鈕不記憶，預設不勾選
+                const pauseToggle = document.getElementById('pause-send');
+                if(pauseToggle) pauseToggle.checked = false;
 
             } catch (e) { window.reportError("Init Error", e); }
         });
@@ -701,12 +726,11 @@
 
         function resetConversation() {
             chatHistory = []; 
-            // 重置黏性圖片
             stickyImage = { data: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
             selectedFile = null;
-            document.getElementById('upload-btn').innerText = "📁 檔案";
+            document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
             document.getElementById('upload-btn').classList.remove('active');
             document.getElementById('file-input').value = "";
             toggleExportButtons(false);
@@ -792,7 +816,6 @@
                     
                     if (!isCanvasBlank(canvas)) {
                         const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                        // 注意：OCR 過程不使用黏性圖片機制，它是獨立的
                         let pageText = await callAI(ocrProvider, DEFAULT_OCR_PROMPT, [], "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
                         accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
                     }
@@ -808,7 +831,6 @@
                 let transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
                 let transApiKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
                 updateStatusBar("正在翻譯...", "busy");
-                // 翻譯不帶歷史紀錄
                 const res = await callAI(transProvider, memoryPrompts.translate, [], `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey);
                 addMessage('assistant', UniversalTextNormalizer.normalize(res));
             } else {
@@ -1052,19 +1074,34 @@
             const b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
             const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
         }
+        
+        // --- 核心 3: 升級版 handleFileSelect (支援立即傳送切換) ---
         function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
             if(f) { 
-                selectedFile=f; 
+                selectedFile = f; 
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
-                showTransientStatus("檔案已加入"); 
-                document.getElementById('user-input').focus();
+                
+                // 檢查「暫停傳送」開關
+                const isPaused = document.getElementById('pause-send').checked;
+                
+                if (!isPaused) {
+                    showTransientStatus("即將自動發送...");
+                    // 延遲 0.7 秒讓使用者意識到已選檔，然後自動送出
+                    setTimeout(() => {
+                        const event = new Event('submit', { cancelable: true });
+                        document.querySelector('form').dispatchEvent(event); 
+                    }, 700);
+                } else {
+                    showTransientStatus("檔案已加入，請輸入文字後發送"); 
+                    document.getElementById('user-input').focus();
+                }
             }
         }
+
         function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
 
-        // --- 核心 3: 升級版 handleSubmit (支援黏性圖片) ---
         async function handleSubmit(e) {
             e.preventDefault(); ensureAudioContext();
             const txt = document.getElementById('user-input').value.trim();
@@ -1078,12 +1115,9 @@
                 let input = txt; 
                 let fileData = null; 
                 let mime = null;
-                let isPDF = false;
 
-                // A. 檔案處理邏輯
                 if(selectedFile) {
                     if(selectedFile.type === 'application/pdf') {
-                        isPDF = true;
                         const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                         if(pdfText) { 
                             const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
@@ -1092,31 +1126,27 @@
                     } else if (selectedFile.type.startsWith('image/')) {
                         fileData = await readFileAsBase64(selectedFile); 
                         mime = selectedFile.type;
-                        // 設定黏性圖片 (Sticky Image)
                         stickyImage = { data: fileData, mime: mime, count: 3 };
                     }
                 } 
-                // B. 若無新圖片，檢查是否有黏性圖片
                 else if (stickyImage.count > 0 && stickyImage.data) {
                     fileData = stickyImage.data;
                     mime = stickyImage.mime;
-                    stickyImage.count--; // 扣除一次機會
+                    stickyImage.count--; 
                     if (stickyImage.count === 0) showTransientStatus("圖片追問次數已用完");
                     else showTransientStatus(`圖片追問模式 (剩餘 ${stickyImage.count} 次)`);
                 }
 
-                // 顯示使用者訊息
                 addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[圖片追問]"));
                 
                 document.getElementById('user-input').value = ""; 
-                document.getElementById('upload-btn').innerText = "📁 檔案"; 
+                document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
                 
-                // 呼叫 AI (傳入歷史紀錄)
                 const res = await callAI(
                     document.getElementById('provider-select').value, 
-                    document.getElementById('system-prompt').value, // 強制每次讀取 System Prompt
+                    document.getElementById('system-prompt').value,
                     chatHistory, 
                     input, 
                     fileData, 
@@ -1127,18 +1157,14 @@
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
                 setTimeout(() => { aiMsg.focus(); }, 100);
 
-                // 更新歷史紀錄 (只存文字，節省 Token)
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
-                
-                // 保持歷史紀錄長度 (最近 10 則)
                 if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
 
                 playAudioCue('success'); showReadyStatus();
             } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
         }
 
-        // --- 核心 4: 升級版 callAI (支援歷史與系統指令打包) ---
         async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
             const k = ovKey || document.getElementById('api-key').value; 
             const m = ovModel || currentActiveModelId;
@@ -1146,25 +1172,19 @@
             if(!k) throw new Error("需 API Key");
             let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
             
-            // --- Gemini 封包建構 ---
             if(p==='gemini') {
                 url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
                 
-                // 1. 系統指令
                 let bodyContent = { 
                     system_instruction: { parts: [{ text: sysPrompt }] },
                     contents: [] 
                 };
-
-                // 2. 歷史紀錄 (轉為 Gemini 格式)
                 history.forEach(msg => {
                     bodyContent.contents.push({
                         role: msg.role === 'user' ? 'user' : 'model',
                         parts: [{ text: msg.content }]
                     });
                 });
-
-                // 3. 當前訊息 (包含圖片)
                 let currentParts = [];
                 if (file) {
                     currentParts.push({ inline_data: { mime_type: mime || "image/jpeg", data: file } });
@@ -1174,7 +1194,6 @@
 
                 body = bodyContent;
             } 
-            // --- OpenAI / OpenRouter 封包建構 ---
             else {
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
@@ -1186,16 +1205,10 @@
                 else url = "https://api.groq.com/openai/v1/chat/completions";
 
                 let messages = [];
-
-                // 1. 系統指令
                 messages.push({ role: "system", content: sysPrompt });
-
-                // 2. 歷史紀錄
                 history.forEach(msg => {
                     messages.push({ role: msg.role, content: msg.content });
                 });
-
-                // 3. 當前訊息
                 let currentContent = [];
                 if (file) {
                     currentContent.push({ type: "text", text: txt });
