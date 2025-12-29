@@ -305,7 +305,7 @@
                     <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
                     
-                    <!-- 2. 暫停傳送 Checkbox (已改為標準核取方塊) -->
+                    <!-- 2. 暫停傳送 Checkbox -->
                     <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
                         <span>暫停發送</span>
@@ -465,9 +465,9 @@
     <script>
         // --- 全域變數新增：黏性圖片、歷史紀錄、上一個分頁 ---
         let stickyImage = { data: null, mime: null, count: 0 };
-        let lastActiveTabId = 'chat'; // 預設為對話頁
+        let lastActiveTabId = 'chat'; 
         
-        // --- 核心 1: 分頁切換邏輯 (升級版：記錄上一個頁面) ---
+        // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(el => {
@@ -486,7 +486,6 @@
                 else { const title = document.getElementById(`${tabId}-title`); if (title) title.focus(); }
             }
             
-            // 如果切換到的不是設定頁，則記錄此頁面為「上一個活躍頁面」
             if (tabId !== 'settings') {
                 lastActiveTabId = tabId;
             }
@@ -556,7 +555,6 @@
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE\nTranslator (Traditional Chinese - Hong Kong).\n# TASK\nTranslate the input text fully and fluently. Fix broken lines.`;
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v2";
 
-        // 更新 Gemini 預設模型為 gemini-3.0-flash (2025 年最新)
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-3.0-flash", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-3.0-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-exp:free", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
@@ -1029,18 +1027,31 @@
             const w = document.getElementById('custom-model-wrapper');
             if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
         }
+        
+        // --- 核心修正: 更新模型清單後立即儲存 ---
         async function fetchOnlineModels() {
             const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
             if(!k && p!=='openrouter') return alert("需 API Key");
-            const btn = document.getElementById('refresh-btn'); btn.innerText="..."; btn.disabled=true;
+            const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
             try {
                 let list=[];
                 if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
-                if(list.length) { localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); allCurrentModels=list; handleModelFilter(); showTransientStatus("已更新"); }
-            } catch(e) { window.reportError("Fetch Models Error", e); } finally { btn.innerText="更新"; btn.disabled=false; }
+                
+                if(list && list.length > 0) { 
+                    // 立即儲存清單 (Immediately save list)
+                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
+                    allCurrentModels=list; 
+                    handleModelFilter(); 
+                    showTransientStatus("模型清單已更新並儲存"); 
+                } else {
+                    throw new Error("找不到可用模型");
+                }
+            } catch(e) { window.reportError("更新失敗", e); } 
+            finally { btn.innerText="更新"; btn.disabled=false; }
         }
+
         function handleModelSelectChange() {
             const s = document.getElementById('model-select');
             if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
@@ -1088,7 +1099,6 @@
             const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
         }
         
-        // --- 核心 3: 升級版 handleFileSelect (支援立即傳送切換) ---
         function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
             if(f) { 
@@ -1096,12 +1106,9 @@
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
-                // 檢查「暫停傳送」開關
                 const isPaused = document.getElementById('pause-send').checked;
-                
                 if (!isPaused) {
                     showTransientStatus("即將自動發送...");
-                    // 延遲 0.7 秒讓使用者意識到已選檔，然後自動送出
                     setTimeout(() => {
                         const event = new Event('submit', { cancelable: true });
                         document.querySelector('form').dispatchEvent(event); 
