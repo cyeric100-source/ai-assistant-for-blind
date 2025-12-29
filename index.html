@@ -463,8 +463,9 @@
     </nav>
 
     <script>
-        // --- 全域變數新增：黏性圖片、歷史紀錄、上一個分頁 ---
-        let stickyImage = { data: null, mime: null, count: 0 };
+        // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
+        // 升級：stickyMemory 支援 type ('image' | 'text')
+        let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
         
         // --- 核心 1: 分頁切換邏輯 ---
@@ -667,11 +668,20 @@
                 initDragAndDrop();
                 initEnterKey();
                 initVoiceButtonEvents();
-                switchTab('chat');
                 
-                // 確保暫停傳送核取方塊不記憶，預設不勾選
+                // 暫停傳送預設不勾選
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
+
+                // --- 修正重點：啟動檢查 API Key ---
+                const hasKey = document.getElementById('api-key').value.trim().length > 0;
+                if (!hasKey) {
+                    switchTab('settings');
+                    showTransientStatus('請先設定 API Key', 'error');
+                } else {
+                    // 若有 Key，則進入對話頁 (或上一次的頁面，這裡預設對話頁較直覺)
+                    switchTab('chat');
+                }
 
             } catch (e) { window.reportError("Init Error", e); }
         });
@@ -734,7 +744,8 @@
 
         function resetConversation() {
             chatHistory = []; 
-            stickyImage = { data: null, mime: null, count: 0 };
+            // 重置 stickyMemory
+            stickyMemory = { type: null, content: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
             selectedFile = null;
@@ -1028,7 +1039,6 @@
             if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
         }
         
-        // --- 核心修正: 更新模型清單後立即儲存 ---
         async function fetchOnlineModels() {
             const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
             if(!k && p!=='openrouter') return alert("需 API Key");
@@ -1040,7 +1050,6 @@
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
-                    // 立即儲存清單 (Immediately save list)
                     localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
                     allCurrentModels=list; 
                     handleModelFilter(); 
@@ -1073,8 +1082,6 @@
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
             saveVoiceSettings(); 
             showTransientStatus("設定已儲存");
-            
-            // 自動返回上一個頁面
             switchTab(lastActiveTabId || 'chat');
         }
 
@@ -1099,13 +1106,20 @@
             const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
         }
         
-        function handleFileSelect(f) {
+        // --- 修正重點：handleFileSelect 新增文字提取處理 ---
+        async function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
             if(f) { 
                 selectedFile = f; 
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
+                // 預處理：若是 PDF/Text 且使用者開啟追問，提前提取內容
+                if (f.type === 'application/pdf') {
+                    // 這裡先不阻塞 UI，稍後 submit 時會正式提取
+                    // 但為了 stickyMemory 邏輯，我們在 submit 時統一處理
+                }
+
                 const isPaused = document.getElementById('pause-send').checked;
                 if (!isPaused) {
                     showTransientStatus("即將自動發送...");
@@ -1121,7 +1135,9 @@
         }
 
         function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
+        function readFileAsText(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result); rd.onerror=j; rd.readAsText(f);}); }
 
+        // --- 修正重點：handleSubmit 支援全檔案類型 Sticky ---
         async function handleSubmit(e) {
             e.preventDefault(); ensureAudioContext();
             const txt = document.getElementById('user-input').value.trim();
@@ -1136,28 +1152,49 @@
                 let fileData = null; 
                 let mime = null;
 
+                // A. 全新檔案上傳處理 (New File)
                 if(selectedFile) {
+                    // 1. PDF 處理
                     if(selectedFile.type === 'application/pdf') {
                         const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                         if(pdfText) { 
                             const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
-                            input = `[PDF CONTENT]:\n${cleanPdfText}\n\n${txt}`; 
+                            input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
+                            // 設定 Sticky Memory (文字版)
+                            stickyMemory = { type: 'text', content: cleanPdfText, count: 3 };
                         }
-                    } else if (selectedFile.type.startsWith('image/')) {
+                    } 
+                    // 2. 圖片處理
+                    else if (selectedFile.type.startsWith('image/')) {
                         fileData = await readFileAsBase64(selectedFile); 
                         mime = selectedFile.type;
-                        stickyImage = { data: fileData, mime: mime, count: 3 };
+                        // 設定 Sticky Memory (圖片版)
+                        stickyMemory = { type: 'image', content: fileData, mime: mime, count: 3 };
+                    }
+                    // 3. 純文字/程式碼檔案處理 (新增支援)
+                    else if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md') || selectedFile.name.endsWith('.js') || selectedFile.name.endsWith('.html') || selectedFile.name.endsWith('.css') || selectedFile.name.endsWith('.py')) {
+                         const fileText = await readFileAsText(selectedFile);
+                         input = `[文件內容 (${selectedFile.name})]:\n${fileText}\n\n[用戶提問]:\n${txt}`;
+                         stickyMemory = { type: 'text', content: fileText, count: 3 };
                     }
                 } 
-                else if (stickyImage.count > 0 && stickyImage.data) {
-                    fileData = stickyImage.data;
-                    mime = stickyImage.mime;
-                    stickyImage.count--; 
-                    if (stickyImage.count === 0) showTransientStatus("圖片追問次數已用完");
-                    else showTransientStatus(`圖片追問模式 (剩餘 ${stickyImage.count} 次)`);
+                // B. 舊檔案追問處理 (Sticky Follow-up)
+                else if (stickyMemory.count > 0 && stickyMemory.content) {
+                    // 扣除次數
+                    stickyMemory.count--;
+                    
+                    if (stickyMemory.type === 'image') {
+                        fileData = stickyMemory.content;
+                        mime = stickyMemory.mime;
+                        showTransientStatus(`圖片追問模式 (剩餘 ${stickyMemory.count} 次)`);
+                    } else if (stickyMemory.type === 'text') {
+                        // 文字追問：再次將內容附在前面，確保 AI 記得
+                        input = `[文件內容回顧]:\n${stickyMemory.content}\n\n[用戶追問]:\n${txt}`;
+                        showTransientStatus(`文件追問模式 (剩餘 ${stickyMemory.count} 次)`);
+                    }
                 }
 
-                addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[圖片追問]"));
+                addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[追問模式]"));
                 
                 document.getElementById('user-input').value = ""; 
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
@@ -1177,6 +1214,8 @@
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
                 setTimeout(() => { aiMsg.focus(); }, 100);
 
+                // 注意：若 input 包含大量文字，存入歷史可能會讓 Context 爆掉
+                // 但為了簡單與一致性，我們暫時存入。現代模型 Context 較大。
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
                 if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
