@@ -197,7 +197,16 @@
         }
         button.secondary { background-color: #333; color: #fff; border: 1px solid #777; }
         button.danger { background-color: #550000; color: #ffcccc; border: 1px solid #ff4444; }
+        button.high-contrast { background-color: #FFD700; color: #000; border: 2px solid #FFF; font-size: 1.2rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* OCR 結果區專用樣式 */
+        #quick-ocr-output {
+            background: #111; border: 2px solid #444; border-radius: 8px;
+            padding: 15px; min-height: 100px; margin-top: 10px;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        #quick-ocr-output:focus { outline: 3px solid var(--accent-color); background: #222; }
 
         /* 對話氣泡樣式 */
         .message {
@@ -330,6 +339,22 @@
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
             <h2 tabindex="-1" id="tools-title">工具箱 (Tools)</h2>
             
+            <!-- 新增：快速 OCR 功能區塊 -->
+            <div class="settings-card" style="border-color: var(--accent-color);">
+                <h3>📸 快速文字識別 (Quick OCR)</h3>
+                <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
+                
+                <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
+                    📸 拍攝 / 取得文字
+                </button>
+                <p style="font-size:0.9rem; color:#aaa;">* 按 Alt + O 快速啟動。結果將直接顯示於下方。</p>
+                
+                <!-- 結果顯示區，支援焦點導航 -->
+                <div id="quick-ocr-output" role="region" aria-label="文字識別結果" tabindex="-1">
+                    (等待拍攝...)
+                </div>
+            </div>
+
             <div class="settings-card">
                 <h3>📄 PDF 智能閱讀 (OCR & 翻譯)</h3>
                 <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
@@ -635,7 +660,6 @@ Your ONLY objective is to transcribe 100% of the visible text from the provided 
 # OUTPUT FORMAT
 Start immediately with the extracted text. Do not provide any introductory or concluding remarks.`;
         
-        // 修正：更新為究極翻譯指令 (Ultimate Translation Prompt)
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE
 You are a world-class Translator and Terminologist fluent in all major languages, specializing in "Traditional Chinese (Hong Kong variant)". Your work is defined by three core principles: Faithfulness (信), Expressiveness (達), and Elegance (雅).
 
@@ -659,11 +683,9 @@ Translate the provided input text into high-quality **Traditional Chinese (Hong 
 # OUTPUT
 Directly provide the final, polished Traditional Chinese translation.`;
         
-        // 修正：更新版本號以確保新指令生效
-        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v6";
+        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v6_ocr_feature";
 
         const PROVIDERS = {
-            // 修正：gemini 預設模型改為 gemini-flash-latest
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-exp:free", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
@@ -712,6 +734,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
         function handleGlobalShortcuts(e) {
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
+            
+            // 新增：Alt + O 觸發 Quick OCR
+            if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
+
             if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
             const actions = {
                 's': () => switchTab('settings'),
@@ -790,6 +816,61 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
             } catch (e) { window.reportError("Init Error", e); }
         });
+
+        // --- 新增功能：觸發 Quick OCR ---
+        function triggerQuickOCR() {
+            // 切換到工具頁面以顯示結果
+            switchTab('tools');
+            // 觸發隱藏的檔案輸入框
+            document.getElementById('quick-ocr-input').click();
+        }
+
+        // --- 新增功能：處理 Quick OCR 檔案 ---
+        async function handleQuickOCRFileSelect() {
+            const input = document.getElementById('quick-ocr-input');
+            const file = input.files[0];
+            if (!file) return;
+            
+            // 重置 UI 與焦點
+            const outputDiv = document.getElementById('quick-ocr-output');
+            outputDiv.innerHTML = '<p>分析中，請稍候...</p>';
+            outputDiv.focus(); // 讓讀屏軟體知道這裡有變化
+            
+            updateStatusBar("正在識別文字 (OCR)...", "busy");
+            playAudioCue('start');
+
+            try {
+                // 讀取檔案為 Base64
+                let fileData = await readFileAsBase64(file);
+                
+                // 呼叫 AI (使用獨立的 OCR Prompt，不帶對話歷史)
+                const res = await callAI(
+                    document.getElementById('provider-select').value,
+                    DEFAULT_OCR_PROMPT, // 強制使用 OCR 專用指令
+                    [], // 空歷史紀錄
+                    "", // 不帶用戶文字
+                    fileData,
+                    file.type, // 傳遞正確的 MIME Type (image/* 或 application/pdf)
+                    null // 不設定 abort signal
+                );
+                
+                // 處理並顯示結果
+                const safeHTML = DOMPurify.sanitize(marked.parse(res));
+                outputDiv.innerHTML = safeHTML;
+                
+                // 無障礙：播放成功音效並強制聚焦，讓讀屏軟體朗讀
+                playAudioCue('success');
+                outputDiv.focus();
+                updateStatusBar("識別完成");
+                
+            } catch (e) {
+                window.reportError("Quick OCR Failed", e);
+                outputDiv.innerHTML = `<p style="color:#ff5555; font-weight:bold;">⚠️ 識別失敗：${e.message}</p>`;
+                outputDiv.focus();
+            }
+            // 清空 Input 允許重複上傳相同檔案
+            input.value = '';
+        }
 
         function switchPromptEditor(mode) {
             const textarea = document.getElementById('system-prompt');
