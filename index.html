@@ -464,7 +464,6 @@
 
     <script>
         // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
-        // 升級：stickyMemory 支援 type ('image' | 'text')
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
         
@@ -538,6 +537,7 @@
             const logArea = document.getElementById('error-log-area');
             if (logArea) logArea.value += `[${time}] ${msg}\n${errText}\n----------------\n`;
             console.error(msg, errObj);
+            // 修正：確保錯誤狀態能觸發強制語音回饋
             updateStatusBar(`錯誤: ${msg}`, 'error');
             playAudioCue('error');
         };
@@ -673,13 +673,11 @@
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
 
-                // --- 修正重點：啟動檢查 API Key ---
                 const hasKey = document.getElementById('api-key').value.trim().length > 0;
                 if (!hasKey) {
                     switchTab('settings');
                     showTransientStatus('請先設定 API Key', 'error');
                 } else {
-                    // 若有 Key，則進入對話頁 (或上一次的頁面，這裡預設對話頁較直覺)
                     switchTab('chat');
                 }
 
@@ -744,7 +742,6 @@
 
         function resetConversation() {
             chatHistory = []; 
-            // 重置 stickyMemory
             stickyMemory = { type: null, content: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
@@ -948,6 +945,16 @@
             }
         }
 
+        // --- 新增：智慧格式偵測 (支援 iOS/Safari) ---
+        function getSupportedMimeType() {
+            // 優先檢查 Safari 支援的 mp4 (AAC)
+            if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+            // 其次檢查 Chrome/Android 支援的 webm
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+            if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+            return ''; // 讓瀏覽器使用預設值
+        }
+
         async function startVoiceRecording() {
             ensureAudioContext(); if (isVoiceRecording) return;
             const engine = document.getElementById('voice-engine').value;
@@ -955,9 +962,19 @@
             else {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream); audioChunks = []; 
+                    
+                    // 修正：使用智慧偵測後的 MIME Type
+                    const mimeType = getSupportedMimeType();
+                    const options = mimeType ? { mimeType } : undefined;
+                    
+                    mediaRecorder = new MediaRecorder(stream, options); 
+                    audioChunks = []; 
                     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                    mediaRecorder.onstop = async () => { await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); stream.getTracks().forEach(t=>t.stop()); };
+                    mediaRecorder.onstop = async () => { 
+                        // 傳遞實際使用的 mimeType 給處理函式
+                        await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
+                        stream.getTracks().forEach(t=>t.stop()); 
+                    };
                     mediaRecorder.start(); isVoiceRecording = true; document.getElementById('voice-btn').classList.add('recording'); playAudioCue('start');
                 } catch (e) { showTransientStatus('麥克風錯誤', 'error'); }
             }
@@ -994,10 +1011,17 @@
         function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
         function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
         
+        // 修正：優化狀態列更新順序，確保 aria-live 生效
         function updateStatusBar(t, s='ready') { 
-            const b = document.getElementById('status-bar'); b.innerText = t; b.className = s; 
+            const b = document.getElementById('status-bar'); 
+            // 1. 先設定 ARIA 屬性 (讓螢幕閱讀器準備好)
             b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
+            // 2. 設定樣式
+            b.className = s; 
+            // 3. 最後更新文字 (觸發閱讀)
+            b.innerText = t; 
         }
+
         function showReadyStatus() { updateStatusBar("準備就緒"); }
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
@@ -1106,7 +1130,6 @@
             const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
         }
         
-        // --- 修正重點：handleFileSelect 新增文字提取處理 ---
         async function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
             if(f) { 
@@ -1114,10 +1137,8 @@
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
-                // 預處理：若是 PDF/Text 且使用者開啟追問，提前提取內容
                 if (f.type === 'application/pdf') {
-                    // 這裡先不阻塞 UI，稍後 submit 時會正式提取
-                    // 但為了 stickyMemory 邏輯，我們在 submit 時統一處理
+                    // PDF Pre-processing hook
                 }
 
                 const isPaused = document.getElementById('pause-send').checked;
@@ -1137,7 +1158,6 @@
         function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
         function readFileAsText(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result); rd.onerror=j; rd.readAsText(f);}); }
 
-        // --- 修正重點：handleSubmit 支援全檔案類型 Sticky ---
         async function handleSubmit(e) {
             e.preventDefault(); ensureAudioContext();
             const txt = document.getElementById('user-input').value.trim();
@@ -1152,43 +1172,33 @@
                 let fileData = null; 
                 let mime = null;
 
-                // A. 全新檔案上傳處理 (New File)
                 if(selectedFile) {
-                    // 1. PDF 處理
                     if(selectedFile.type === 'application/pdf') {
                         const pdfText = await extractTextFromPDF_Accurate(selectedFile);
                         if(pdfText) { 
                             const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
                             input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
-                            // 設定 Sticky Memory (文字版)
                             stickyMemory = { type: 'text', content: cleanPdfText, count: 3 };
                         }
                     } 
-                    // 2. 圖片處理
                     else if (selectedFile.type.startsWith('image/')) {
                         fileData = await readFileAsBase64(selectedFile); 
                         mime = selectedFile.type;
-                        // 設定 Sticky Memory (圖片版)
                         stickyMemory = { type: 'image', content: fileData, mime: mime, count: 3 };
                     }
-                    // 3. 純文字/程式碼檔案處理 (新增支援)
                     else if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md') || selectedFile.name.endsWith('.js') || selectedFile.name.endsWith('.html') || selectedFile.name.endsWith('.css') || selectedFile.name.endsWith('.py')) {
                          const fileText = await readFileAsText(selectedFile);
                          input = `[文件內容 (${selectedFile.name})]:\n${fileText}\n\n[用戶提問]:\n${txt}`;
                          stickyMemory = { type: 'text', content: fileText, count: 3 };
                     }
                 } 
-                // B. 舊檔案追問處理 (Sticky Follow-up)
                 else if (stickyMemory.count > 0 && stickyMemory.content) {
-                    // 扣除次數
                     stickyMemory.count--;
-                    
                     if (stickyMemory.type === 'image') {
                         fileData = stickyMemory.content;
                         mime = stickyMemory.mime;
                         showTransientStatus(`圖片追問模式 (剩餘 ${stickyMemory.count} 次)`);
                     } else if (stickyMemory.type === 'text') {
-                        // 文字追問：再次將內容附在前面，確保 AI 記得
                         input = `[文件內容回顧]:\n${stickyMemory.content}\n\n[用戶追問]:\n${txt}`;
                         showTransientStatus(`文件追問模式 (剩餘 ${stickyMemory.count} 次)`);
                     }
@@ -1214,8 +1224,6 @@
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
                 setTimeout(() => { aiMsg.focus(); }, 100);
 
-                // 注意：若 input 包含大量文字，存入歷史可能會讓 Context 爆掉
-                // 但為了簡單與一致性，我們暫時存入。現代模型 Context 較大。
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
                 if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
