@@ -397,6 +397,7 @@
                     <select id="provider-select" onchange="handleProviderChange(true)">
                         <option value="gemini">Google Gemini (推薦)</option>
                         <option value="openrouter">OpenRouter (推薦)</option>
+                        <option value="datalab">Datalab (Chandra OCR)</option>
                         <option value="openai">OpenAI</option>
                         <option value="groq">Groq</option>
                         <option value="mistral">Mistral AI</option>
@@ -688,6 +689,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-exp:free", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
+            datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
             groq: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "llama-3.3-70b-versatile", canFetch: true, listUrl: "https://api.groq.com/openai/v1/models", models: ["llama-3.3-70b-versatile"] },
@@ -1036,10 +1038,16 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let transApiKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
                 updateStatusBar("正在翻譯...", "busy");
                 const res = await callAI(transProvider, memoryPrompts.translate, [], `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey);
-                addMessage('assistant', UniversalTextNormalizer.normalize(res));
+                
+                // 修正重點：獲取回傳的 div 並移動焦點
+                const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res));
+                setTimeout(() => aiMsg.focus(), 100);
+
             } else {
                 let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
-                addMessage('assistant', displayText);
+                // 修正重點：獲取回傳的 div 並移動焦點
+                const aiMsg = addMessage('assistant', displayText);
+                setTimeout(() => aiMsg.focus(), 100);
             }
 
             playAudioCue('success'); updateStatusBar("完成");
@@ -1135,10 +1143,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
         // --- 新增：智慧格式偵測 (支援 iOS/Safari) ---
         function getSupportedMimeType() {
-            // 優先檢查 Safari 支援的 mp4 (AAC)
+            // 優先檢查 Safari 支援的 mp4 (AAC) - 優先順序 1
             if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
-            // 其次檢查 Chrome/Android 支援的 webm
+            // 其次檢查 Chrome/Android 支援的 webm - 優先順序 2
             if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+            // 最後是通用 webm - 優先順序 3
             if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
             return ''; // 讓瀏覽器使用預設值
         }
@@ -1183,6 +1192,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
         async function processWhisperAudio(blob, engine, mime) {
             let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
             if (!apiKey) return alert("需 API Key");
+            // 修正：根據 mime 決定副檔名，確保後端能識別
             const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
             fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
             updateStatusBar("語音轉譯中...", "busy");
@@ -1259,6 +1269,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let list=[];
                 if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+                else if(p==='datalab') return; // Datalab 無需更新模型
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
@@ -1425,6 +1436,67 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const m = ovModel || currentActiveModelId;
             
             if(!k) throw new Error("需 API Key");
+
+            // --- 新增：Datalab (Chandra OCR) 專用邏輯 ---
+            if (p === 'datalab') {
+                if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入 (不支援純文字對話)");
+                
+                // 1. Base64 轉 Blob (用於 FormData 上傳)
+                const byteCharacters = atob(file);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {type: mime || 'application/pdf'});
+
+                // 2. 建立上傳請求
+                const formData = new FormData();
+                formData.append('file', blob);
+                
+                // 3. 上傳檔案 (POST)
+                const postReq = await fetch('https://www.datalab.to/api/v1/ocr', {
+                    method: 'POST',
+                    headers: { 'X-Api-Key': k },
+                    body: formData,
+                    signal: sig
+                });
+                
+                if (!postReq.ok) {
+                    const errText = await postReq.text();
+                    throw new Error(`Datalab Upload Failed: ${errText}`);
+                }
+                
+                const postData = await postReq.json();
+                const requestId = postData.request_id;
+                
+                // 4. 輪詢檢查狀態 (Polling)
+                while (true) {
+                    if (sig.aborted) throw new Error("使用者取消操作");
+                    
+                    // 每秒檢查一次
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    const checkReq = await fetch(`https://www.datalab.to/api/v1/ocr/${requestId}`, {
+                        method: 'GET',
+                        headers: { 'X-Api-Key': k },
+                        signal: sig
+                    });
+                    
+                    if (!checkReq.ok) throw new Error("Datalab Check Failed");
+                    
+                    const checkData = await checkReq.json();
+                    
+                    if (checkData.status === 'complete') {
+                        return checkData.result.markdown; // 成功：回傳 Markdown
+                    } else if (checkData.status === 'failed') {
+                        throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
+                    }
+                    // status == 'processing' -> 繼續迴圈
+                }
+            }
+            // --- Datalab 邏輯結束 ---
+
             let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
             
             if(p==='gemini') {
