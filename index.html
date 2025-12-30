@@ -1472,7 +1472,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 
                 // 4. 輪詢檢查狀態 (Polling) -> 透過 CORS Proxy
                 while (true) {
-                    if (sig.aborted) throw new Error("使用者取消操作");
+                    if (sig && sig.aborted) throw new Error("使用者取消操作");
                     
                     // 每秒檢查一次
                     await new Promise(r => setTimeout(r, 1000));
