@@ -1454,8 +1454,8 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const formData = new FormData();
                 formData.append('file', blob);
                 
-                // 3. 上傳檔案 (POST)
-                const postReq = await fetch('https://www.datalab.to/api/v1/ocr', {
+                // 3. 上傳檔案 (POST) -> 透過 CORS Proxy
+                const postReq = await fetch('https://corsproxy.io/?https://www.datalab.to/api/v1/ocr', {
                     method: 'POST',
                     headers: { 'X-Api-Key': k },
                     body: formData,
@@ -1470,14 +1470,14 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const postData = await postReq.json();
                 const requestId = postData.request_id;
                 
-                // 4. 輪詢檢查狀態 (Polling)
+                // 4. 輪詢檢查狀態 (Polling) -> 透過 CORS Proxy
                 while (true) {
                     if (sig.aborted) throw new Error("使用者取消操作");
                     
                     // 每秒檢查一次
                     await new Promise(r => setTimeout(r, 1000));
                     
-                    const checkReq = await fetch(`https://www.datalab.to/api/v1/ocr/${requestId}`, {
+                    const checkReq = await fetch(`https://corsproxy.io/?https://www.datalab.to/api/v1/ocr/${requestId}`, {
                         method: 'GET',
                         headers: { 'X-Api-Key': k },
                         signal: sig
