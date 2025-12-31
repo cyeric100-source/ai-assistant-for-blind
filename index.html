@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 Pro Stream 版)</title>
+    <title>AI 視障助理 (2025 Datalab 修正版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -997,7 +997,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
                 if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
 
-                // 如果是 Chandra OCR，直接進行全檔案處理，跳過分頁截圖
+                // 如果是 Datalab/Chandra OCR，直接進行全檔案處理，跳過分頁截圖
                 if (ocrProvider === 'datalab') {
                      updateStatusBar("正在上傳整份 PDF 至 Chandra OCR...", "busy");
                      let fileData = await readFileAsBase64(file);
@@ -1420,12 +1420,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             if(!k) throw new Error("需 API Key");
 
-            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 ---
-            // 現在改用 USER_WORKER_URL 進行串流轉發，支援全檔案上傳
+            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 [修正版] ---
+            // 改用 Marker 接口以取得正確的 Markdown 格式
             if (p === 'datalab') {
                 if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
                 
-                // 1. 將 Base64 還原為二進位 Blob
                 const byteCharacters = atob(file);
                 const byteNumbers = new Array(byteCharacters.length);
                 for (let i = 0; i < byteCharacters.length; i++) {
@@ -1434,17 +1433,16 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], {type: mime || 'application/pdf'});
 
-                // 2. 建立 FormData (這是關鍵，瀏覽器會自動處理邊界)
                 const formData = new FormData();
                 formData.append('file', blob);
+                formData.append('output_format', 'markdown'); // 強制輸出 Markdown
                 
-                // 3. 上傳檔案 (POST) -> 透過 Worker 串流
-                // 注意：這裡不設定 Content-Type，讓瀏覽器自動設為 multipart/form-data
+                // 改為使用 Marker 接口 (Marker 是 Chandra 的文件處理核心)
                 const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
                     headers: { 
                         'X-Api-Key': k,
-                        'X-Target-Url': 'https://www.datalab.to/api/v1/ocr' // 告訴 Worker 目標在哪
+                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker' // 修正為 Marker
                     },
                     body: formData,
                     signal: sig
@@ -1458,17 +1456,16 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const postData = await postReq.json();
                 const requestId = postData.request_id;
                 
-                // 4. 輪詢檢查狀態 (Polling) -> 透過 Worker 轉發 GET
                 while (true) {
                     if (sig && sig.aborted) throw new Error("使用者取消操作");
                     
                     await new Promise(r => setTimeout(r, 1000));
                     
                     const checkReq = await fetch(USER_WORKER_URL, {
-                        method: 'GET', // Worker 現在支援 GET
+                        method: 'GET', 
                         headers: { 
                             'X-Api-Key': k,
-                            'X-Target-Url': `https://www.datalab.to/api/v1/ocr/${requestId}`
+                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}` // 修正為 Marker 查詢
                         },
                         signal: sig
                     });
@@ -1478,7 +1475,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     const checkData = await checkReq.json();
                     
                     if (checkData.status === 'complete') {
-                        return checkData.result.markdown; 
+                        // 修正讀取路徑：Marker 接口回傳的 markdown 通常在頂層或 result 內
+                        // 為了保險，我們檢查多個可能的位置
+                        const resultMd = checkData.markdown || (checkData.result ? checkData.result.markdown : null) || JSON.stringify(checkData);
+                        return resultMd;
                     } else if (checkData.status === 'failed') {
                         throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
                     }
@@ -1486,7 +1486,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             }
             
             // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
-            // 同樣改用 X-Target-Url 標頭進行轉發，更加穩定
+            // 標頭模式轉發
             
             let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
             let bodyObj = {};
@@ -1542,13 +1542,13 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
             }
 
-            // --- 核心代理請求 (使用新的 Header 模式) ---
-            headers['X-Target-Url'] = url; // 將目標網址放入 Header
+            // --- 核心代理請求 ---
+            headers['X-Target-Url'] = url; 
 
             const r = await fetch(USER_WORKER_URL, {
                 method: 'POST',
-                headers: headers, // 直接傳送 Headers
-                body: JSON.stringify(bodyObj), // 直接傳送 Body
+                headers: headers, 
+                body: JSON.stringify(bodyObj), 
                 signal: sig
             });
 
