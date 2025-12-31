@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 記憶增強版)</title>
+    <title>AI 視障助理 (2025 Pro Stream 版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -303,7 +303,7 @@
             <div id="chat-container">
                 <div class="message assistant">
                     <h1 class="msg-heading">AI 助理：</h1>
-                    <div class="markdown-body">你好！我是你的 AI 視障助理。請輸入文字、上傳圖片/PDF，或使用語音進行對話。</div>
+                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF，或使用語音進行對話。</div>
                 </div>
                 <div id="chat-output"></div>
             </div>
@@ -489,6 +489,9 @@
     </nav>
 
     <script>
+        // --- 核心變數：Cloudflare Worker 代理 ---
+        const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
+
         // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
@@ -563,7 +566,6 @@
             const logArea = document.getElementById('error-log-area');
             if (logArea) logArea.value += `[${time}] ${msg}\n${errText}\n----------------\n`;
             console.error(msg, errObj);
-            // 修正：確保錯誤狀態能觸發強制語音回饋
             updateStatusBar(`錯誤: ${msg}`, 'error');
             playAudioCue('error');
         };
@@ -737,7 +739,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
             
-            // 新增：Alt + O 觸發 Quick OCR
             if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
 
             if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
@@ -804,7 +805,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 initEnterKey();
                 initVoiceButtonEvents();
                 
-                // 暫停傳送預設不勾選
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
 
@@ -819,48 +819,39 @@ Directly provide the final, polished Traditional Chinese translation.`;
             } catch (e) { window.reportError("Init Error", e); }
         });
 
-        // --- 新增功能：觸發 Quick OCR ---
         function triggerQuickOCR() {
-            // 切換到工具頁面以顯示結果
             switchTab('tools');
-            // 觸發隱藏的檔案輸入框
             document.getElementById('quick-ocr-input').click();
         }
 
-        // --- 新增功能：處理 Quick OCR 檔案 ---
         async function handleQuickOCRFileSelect() {
             const input = document.getElementById('quick-ocr-input');
             const file = input.files[0];
             if (!file) return;
             
-            // 重置 UI 與焦點
             const outputDiv = document.getElementById('quick-ocr-output');
             outputDiv.innerHTML = '<p>分析中，請稍候...</p>';
-            outputDiv.focus(); // 讓讀屏軟體知道這裡有變化
+            outputDiv.focus(); 
             
             updateStatusBar("正在識別文字 (OCR)...", "busy");
             playAudioCue('start');
 
             try {
-                // 讀取檔案為 Base64
                 let fileData = await readFileAsBase64(file);
                 
-                // 呼叫 AI (使用獨立的 OCR Prompt，不帶對話歷史)
                 const res = await callAI(
                     document.getElementById('provider-select').value,
-                    DEFAULT_OCR_PROMPT, // 強制使用 OCR 專用指令
-                    [], // 空歷史紀錄
-                    "", // 不帶用戶文字
+                    DEFAULT_OCR_PROMPT, 
+                    [], 
+                    "", 
                     fileData,
-                    file.type, // 傳遞正確的 MIME Type (image/* 或 application/pdf)
-                    null // 不設定 abort signal
+                    file.type, 
+                    null 
                 );
                 
-                // 處理並顯示結果
                 const safeHTML = DOMPurify.sanitize(marked.parse(res));
                 outputDiv.innerHTML = safeHTML;
                 
-                // 無障礙：播放成功音效並強制聚焦，讓讀屏軟體朗讀
                 playAudioCue('success');
                 outputDiv.focus();
                 updateStatusBar("識別完成");
@@ -870,7 +861,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 outputDiv.innerHTML = `<p style="color:#ff5555; font-weight:bold;">⚠️ 識別失敗：${e.message}</p>`;
                 outputDiv.focus();
             }
-            // 清空 Input 允許重複上傳相同檔案
             input.value = '';
         }
 
@@ -1007,27 +997,35 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
                 if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
 
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
-                updateVisualProgress(true, `OCR 處理中...`);
-                
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    if (i % 5 === 0) document.getElementById('visual-progress').innerText = `OCR: ${i} / ${pdf.numPages}`;
-                    const page = await pdf.getPage(i);
-                    const viewportRaw = page.getViewport({ scale: 1.0 });
-                    const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
-                    const canvas = document.createElement('canvas');
-                    canvas.width = page.getViewport({ scale }).width; canvas.height = page.getViewport({ scale }).height;
-                    await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
+                // 如果是 Chandra OCR，直接進行全檔案處理，跳過分頁截圖
+                if (ocrProvider === 'datalab') {
+                     updateStatusBar("正在上傳整份 PDF 至 Chandra OCR...", "busy");
+                     let fileData = await readFileAsBase64(file);
+                     accumulatedText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
+                } else {
+                    // Gemini/OpenAI 仍需分頁處理
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
+                    updateVisualProgress(true, `OCR 處理中...`);
                     
-                    if (!isCanvasBlank(canvas)) {
-                        const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                        let pageText = await callAI(ocrProvider, DEFAULT_OCR_PROMPT, [], "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
-                        accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        if (i % 5 === 0) document.getElementById('visual-progress').innerText = `OCR: ${i} / ${pdf.numPages}`;
+                        const page = await pdf.getPage(i);
+                        const viewportRaw = page.getViewport({ scale: 1.0 });
+                        const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = page.getViewport({ scale }).width; canvas.height = page.getViewport({ scale }).height;
+                        await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
+                        
+                        if (!isCanvasBlank(canvas)) {
+                            const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+                            let pageText = await callAI(ocrProvider, DEFAULT_OCR_PROMPT, [], "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                            accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
+                        }
+                        canvas.remove(); await sleep(200); 
                     }
-                    canvas.remove(); await sleep(200); 
+                    updateVisualProgress(false);
                 }
-                updateVisualProgress(false);
             } else {
                 accumulatedText = textData; 
             }
@@ -1039,13 +1037,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 updateStatusBar("正在翻譯...", "busy");
                 const res = await callAI(transProvider, memoryPrompts.translate, [], `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey);
                 
-                // 修正重點：獲取回傳的 div 並移動焦點
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res));
                 setTimeout(() => aiMsg.focus(), 100);
 
             } else {
                 let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
-                // 修正重點：獲取回傳的 div 並移動焦點
                 const aiMsg = addMessage('assistant', displayText);
                 setTimeout(() => aiMsg.focus(), 100);
             }
@@ -1141,15 +1137,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
             }
         }
 
-        // --- 新增：智慧格式偵測 (支援 iOS/Safari) ---
         function getSupportedMimeType() {
-            // 優先檢查 Safari 支援的 mp4 (AAC) - 優先順序 1
             if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
-            // 其次檢查 Chrome/Android 支援的 webm - 優先順序 2
             if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
-            // 最後是通用 webm - 優先順序 3
             if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
-            return ''; // 讓瀏覽器使用預設值
+            return ''; 
         }
 
         async function startVoiceRecording() {
@@ -1159,8 +1151,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    
-                    // 修正：使用智慧偵測後的 MIME Type
                     const mimeType = getSupportedMimeType();
                     const options = mimeType ? { mimeType } : undefined;
                     
@@ -1168,7 +1158,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     audioChunks = []; 
                     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
                     mediaRecorder.onstop = async () => { 
-                        // 傳遞實際使用的 mimeType 給處理函式
                         await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
                         stream.getTracks().forEach(t=>t.stop()); 
                     };
@@ -1192,7 +1181,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
         async function processWhisperAudio(blob, engine, mime) {
             let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
             if (!apiKey) return alert("需 API Key");
-            // 修正：根據 mime 決定副檔名，確保後端能識別
             const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
             fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
             updateStatusBar("語音轉譯中...", "busy");
@@ -1209,14 +1197,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
         function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
         function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
         
-        // 修正：優化狀態列更新順序，確保 aria-live 生效
         function updateStatusBar(t, s='ready') { 
             const b = document.getElementById('status-bar'); 
-            // 1. 先設定 ARIA 屬性 (讓螢幕閱讀器準備好)
             b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
-            // 2. 設定樣式
             b.className = s; 
-            // 3. 最後更新文字 (觸發閱讀)
             b.innerText = t; 
         }
 
@@ -1269,7 +1253,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let list=[];
                 if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
-                else if(p==='datalab') return; // Datalab 無需更新模型
+                else if(p==='datalab') return; 
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
@@ -1337,7 +1321,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
                 if (f.type === 'application/pdf') {
-                    // PDF Pre-processing hook
                 }
 
                 const isPaused = document.getElementById('pause-send').checked;
@@ -1437,11 +1420,12 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             if(!k) throw new Error("需 API Key");
 
-            // --- 新增：Datalab (Chandra OCR) 專用邏輯 ---
+            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 ---
+            // 現在改用 USER_WORKER_URL 進行串流轉發，支援全檔案上傳
             if (p === 'datalab') {
-                if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入 (不支援純文字對話)");
+                if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
                 
-                // 1. Base64 轉 Blob (用於 FormData 上傳)
+                // 1. 將 Base64 還原為二進位 Blob
                 const byteCharacters = atob(file);
                 const byteNumbers = new Array(byteCharacters.length);
                 for (let i = 0; i < byteCharacters.length; i++) {
@@ -1450,14 +1434,18 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], {type: mime || 'application/pdf'});
 
-                // 2. 建立上傳請求
+                // 2. 建立 FormData (這是關鍵，瀏覽器會自動處理邊界)
                 const formData = new FormData();
                 formData.append('file', blob);
                 
-                // 3. 上傳檔案 (POST) -> 透過 CORS Proxy
-                const postReq = await fetch('https://corsproxy.io/?https://www.datalab.to/api/v1/ocr', {
+                // 3. 上傳檔案 (POST) -> 透過 Worker 串流
+                // 注意：這裡不設定 Content-Type，讓瀏覽器自動設為 multipart/form-data
+                const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
-                    headers: { 'X-Api-Key': k },
+                    headers: { 
+                        'X-Api-Key': k,
+                        'X-Target-Url': 'https://www.datalab.to/api/v1/ocr' // 告訴 Worker 目標在哪
+                    },
                     body: formData,
                     signal: sig
                 });
@@ -1470,16 +1458,18 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const postData = await postReq.json();
                 const requestId = postData.request_id;
                 
-                // 4. 輪詢檢查狀態 (Polling) -> 透過 CORS Proxy
+                // 4. 輪詢檢查狀態 (Polling) -> 透過 Worker 轉發 GET
                 while (true) {
                     if (sig && sig.aborted) throw new Error("使用者取消操作");
                     
-                    // 每秒檢查一次
                     await new Promise(r => setTimeout(r, 1000));
                     
-                    const checkReq = await fetch(`https://corsproxy.io/?https://www.datalab.to/api/v1/ocr/${requestId}`, {
-                        method: 'GET',
-                        headers: { 'X-Api-Key': k },
+                    const checkReq = await fetch(USER_WORKER_URL, {
+                        method: 'GET', // Worker 現在支援 GET
+                        headers: { 
+                            'X-Api-Key': k,
+                            'X-Target-Url': `https://www.datalab.to/api/v1/ocr/${requestId}`
+                        },
                         signal: sig
                     });
                     
@@ -1488,19 +1478,22 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     const checkData = await checkReq.json();
                     
                     if (checkData.status === 'complete') {
-                        return checkData.result.markdown; // 成功：回傳 Markdown
+                        return checkData.result.markdown; 
                     } else if (checkData.status === 'failed') {
                         throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
                     }
-                    // status == 'processing' -> 繼續迴圈
                 }
             }
-            // --- Datalab 邏輯結束 ---
-
-            let body={}, url="", headers={'Content-Type':'application/json', 'Authorization':`Bearer ${k}`};
             
-            if(p==='gemini') {
-                url=`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`; delete headers['Authorization'];
+            // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
+            // 同樣改用 X-Target-Url 標頭進行轉發，更加穩定
+            
+            let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
+            let bodyObj = {};
+            
+            if(p === 'gemini') {
+                url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
+                delete headers['Authorization']; 
                 
                 let bodyContent = { 
                     system_instruction: { parts: [{ text: sysPrompt }] },
@@ -1518,14 +1511,15 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 }
                 currentParts.push({ text: txt });
                 bodyContent.contents.push({ role: "user", parts: currentParts });
-
-                body = bodyContent;
+                
+                bodyObj = bodyContent;
             } 
             else {
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
-                    headers['HTTP-Referer'] = 'https://ai-vision.app'; headers['X-Title'] = 'AI Vision';
-                    if(document.getElementById('openrouter-web-search').checked) body.plugins = [{id:"web"}];
+                    headers['HTTP-Referer'] = 'https://ai-vision.app'; 
+                    headers['X-Title'] = 'AI Vision';
+                    if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
                 } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
                 else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
                 else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
@@ -1545,13 +1539,23 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 }
                 messages.push({ role: "user", content: currentContent });
 
-                body = { ...body, model: m, messages: messages, temperature: 0.3 };
+                bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
             }
-            
-            const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:sig});
+
+            // --- 核心代理請求 (使用新的 Header 模式) ---
+            headers['X-Target-Url'] = url; // 將目標網址放入 Header
+
+            const r = await fetch(USER_WORKER_URL, {
+                method: 'POST',
+                headers: headers, // 直接傳送 Headers
+                body: JSON.stringify(bodyObj), // 直接傳送 Body
+                signal: sig
+            });
+
             if(!r.ok) throw new Error(await r.text());
             const d = await r.json();
-            return p==='gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
+            
+            return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
         }
     </script>
 </body>
