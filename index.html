@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 Hybrid OCR 版)</title>
+    <title>AI 視障助理 (2025 Hybrid Pro 版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -345,7 +345,7 @@
                 <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
                 
                 <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
-                    📸 拍攝 / 取得文字
+                    📸 拍攝 / 取得文字 (強制使用 Chandra)
                 </button>
                 <p style="font-size:0.9rem; color:#aaa;">* 按 Alt + O 快速啟動。結果將直接顯示於下方。</p>
                 
@@ -783,24 +783,38 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const file = input.files[0];
             if (!file) return;
             
+            // 強制檢查 Datalab Key
+            const datalabKey = localStorage.getItem('datalab_key');
+            if (!datalabKey) {
+                alert("⚠️ 錯誤：快速 OCR 必須使用 Chandra (Datalab) 引擎。\n\n請先到「設定」頁面選擇 'Datalab' 並輸入 API Key，然後再試一次。");
+                switchTab('settings');
+                // 自動切換到 Datalab 選項方便使用者
+                document.getElementById('provider-select').value = 'datalab';
+                handleProviderChange(true);
+                return;
+            }
+
             const outputDiv = document.getElementById('quick-ocr-output');
-            outputDiv.innerHTML = '<p>分析中，請稍候...</p>';
+            outputDiv.innerHTML = '<p>正在透過 Chandra OCR 進行分析，請稍候...</p>';
             outputDiv.focus(); 
             
-            updateStatusBar("正在識別文字 (OCR)...", "busy");
+            updateStatusBar("正在識別文字 (Chandra)...", "busy");
             playAudioCue('start');
 
             try {
                 let fileData = await readFileAsBase64(file);
                 
+                // 強制使用 Datalab 呼叫
                 const res = await callAI(
-                    document.getElementById('provider-select').value,
+                    'datalab', 
                     DEFAULT_OCR_PROMPT, 
                     [], 
                     "", 
                     fileData,
                     file.type, 
-                    null 
+                    null,
+                    'chandra',
+                    datalabKey
                 );
                 
                 const safeHTML = DOMPurify.sanitize(marked.parse(res));
@@ -964,7 +978,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
                 document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
-                // 1. 取得 Text Layer (文字提示)
+                // 1. 取得 Text Layer (文字提示) - 僅提取純文字，不進行排版處理
                 const page = await pdf.getPage(i);
                 let textLayerContent = "";
                 try {
@@ -1009,22 +1023,26 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     
                     // 格式化輸出
                     let cleanResult = UniversalTextNormalizer.normalize(pageResult);
-                    fullAccumulatedText += `## [第 ${i} 頁]\n\n${cleanResult}\n\n---\n\n`;
+                    
+                    // 修改：不再強制加入 ## 標題，改為直接串接內容
+                    fullAccumulatedText += `${cleanResult}\n\n`;
                     
                     // 即時渲染 Markdown 到畫面上
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
                     
-                    // 滾動到底部
-                    // containerDiv.scrollIntoView({ behavior: "smooth", block: "end" });
-
                 } catch (e) {
                     console.error(`Page ${i} AI Error:`, e);
-                    fullAccumulatedText += `## [第 ${i} 頁]\n\n(此頁處理失敗: ${e.message})\n\n---\n\n`;
+                    fullAccumulatedText += `\n\n(第 ${i} 頁處理失敗: ${e.message})\n\n`;
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
                 }
 
-                // 避免 Rate Limit，稍微暫停
-                await sleep(500);
+                // 5. Google Gemini 頻率限制保護 (Rate Limit Protection)
+                if (ocrProvider === 'gemini') {
+                    updateStatusBar(`冷卻中 (避免 API 限制)...`, "busy");
+                    await sleep(8000); // 至少 8 秒
+                } else {
+                    await sleep(500); // 其他模型只需短暫休息
+                }
             }
 
             updateVisualProgress(false);
@@ -1039,20 +1057,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else { el.classList.remove('active'); el.innerText = ""; }
         }
 
-        // 保留舊的提取函式作為備用或比對
-        async function extractTextFromPDF_Accurate(file) {
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
-                let fullText = "";
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const content = await pdf.getPage(i).then(p => p.getTextContent());
-                    const strings = content.items.map(item => item.str);
-                    fullText += `[Page ${i}]\n${strings.join(" ")}\n\n`;
-                }
-                return fullText;
-            } catch (e) { return null; }
-        }
+        // 已移除 extractTextFromPDF_Accurate 及其輔助函式 (由 AI 全權處理排版)
 
         function initVoiceSystem() {
             const engine = document.getElementById('voice-engine').value;
@@ -1293,8 +1298,18 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let mime = null;
 
                 if(selectedFile) {
+                    // PDF 處理邏輯已變更：直接讀取純文字供 AI 參考，不再進行複雜排版提取
                     if(selectedFile.type === 'application/pdf') {
-                        const pdfText = await extractTextFromPDF_Accurate(selectedFile);
+                        // 嘗試簡單提取文字
+                         const arrayBuffer = await selectedFile.arrayBuffer();
+                         const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+                         let pdfText = "";
+                         for (let i = 1; i <= pdf.numPages; i++) {
+                             const content = await pdf.getPage(i).then(p => p.getTextContent());
+                             const str = content.items.map(item => item.str).join(" ");
+                             pdfText += `[Page ${i}]\n${str}\n\n`;
+                         }
+                         
                         if(pdfText) { 
                             const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
                             input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
