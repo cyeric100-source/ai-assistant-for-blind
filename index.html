@@ -1,9 +1,11 @@
+--- START OF FILE index.html ---
+
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 Datalab 修正版)</title>
+    <title>AI 視障助理 (2025 Hybrid OCR 版)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -11,7 +13,7 @@
     <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
-    <!-- 【核心設定】PDF.js v5.4.449 -->
+    <!-- 【核心設定】PDF.js v4.0.379 (使用穩定版本) -->
     <script type="module">
         if (window.location.protocol === 'file:') {
             document.documentElement.innerHTML = `
@@ -25,13 +27,11 @@
             throw new Error("Local execution blocked.");
         }
 
-        const PDF_BASE = './pdf-dist/pdf.mjs';
-        const WORKER_URL = './pdf-dist/pdf.worker.mjs';
+        const PDF_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+        const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
 
         async function initPdfSystem() {
             try {
-                const response = await fetch(PDF_BASE, { method: 'HEAD' });
-                if (!response.ok) throw new Error("找不到核心檔案");
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
@@ -39,10 +39,10 @@
                 window.dispatchEvent(new Event('pdfjs-loaded'));
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗", e);
+                window.reportError("PDF 核心載入失敗 (CDN)", e);
                 const btn = document.getElementById('pdf-start-btn');
                 if (btn) {
-                    btn.innerText = "⚠️ 錯誤：找不到 pdf-dist";
+                    btn.innerText = "⚠️ 錯誤：PDF 核心失敗";
                     btn.classList.add('danger');
                     btn.disabled = true;
                 }
@@ -356,7 +356,11 @@
             </div>
 
             <div class="settings-card">
-                <h3>📄 PDF 智能閱讀 (OCR & 翻譯)</h3>
+                <h3>📄 PDF 智能混合閱讀 (Hybrid Reader)</h3>
+                <p style="color:#aaa; font-size:0.9rem;">
+                    2025 新功能：結合「文字層」與「視覺 AI」進行逐頁校對。
+                    即使超過 100 頁也能完整輸出不遺漏。
+                </p>
                 <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
                 
                 <button type="button" id="pdf-start-btn" class="action-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
@@ -364,9 +368,6 @@
                 </button>
                 
                 <div style="margin-top:10px;">
-                    <label class="check-btn">
-                        <input type="checkbox" id="pdf-always-ai"> <span>強制使用 AI OCR (跳過文字提取)</span>
-                    </label>
                     <label class="check-btn">
                         <input type="checkbox" id="pdf-translate"> <span>OCR 後翻譯成繁體中文</span>
                     </label>
@@ -594,74 +595,33 @@ Regardless of the task, you must strictly adhere to the following three major pr
    - **Symbol Ban**: It is **strictly prohibited** to output \`[ ]\` (square brackets) or \`{ }\` (curly braces) or any decorative symbols that might interfere with the reading rhythm. When citing sources, state them directly in the narrative; do not use notations like \`[1]\`.
 
 3. **Content Style**:
-   - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.
-
----
-
-## Task: Web Search
-If a user sends you a question, to ensure data accuracy, even if you believe you know the answer, you must perform an online search to obtain the latest and most accurate information.
-
-## Task: Visual Analysis
-When a user uploads an image, process it according to the following classification logic:
-
-### A. If the image contains "Text"
-1. **Priority Recognition**: Use high-level visual capabilities to recognize all visible text. If the image is blurry, tilted, or dim, infer the semantics to complete the content.
-2. **Translation Output**: List the text content directly. If it is not in Chinese, directly provide a Traditional Chinese translation and explanation; do not retain the original text.
-
-### B. If the image is primarily of "Animals or Plants"
-1. **Species Identification**: Search online based on visual features to identify the species.
-2. **Background Investigation**: Search online for its scientific name, common name, habits, distribution, and characteristics.
-3. **Output**: Write an explanatory article containing the species name and detailed characteristics.
-
-### C. If the image is primarily "Product Packaging (Box/Can/Bottle)"
-1. **Information Extraction**: Read the brand, model, and key text on the packaging.
-2. **Deep Research**: Use this information as keywords to search online, covering uses, methods of use, very detailed user reviews and comments, and pros/cons.
-3. **Output**: Combining "visual information" and "online information," write a complete product guide/shopping advice article. This must include **no fewer than 500 words** of user reviews and comments.
-
-### D. If the image is a "Screenshot" (UI/UX Mode)
-1. **Focus Report**: First, point out the item that is currently selected, highlighted, or in focus.
-2. **Interface Scan**: List other visible items on the screen.
-3. **Status Filtering**:
-   - Actionable options (e.g., Checkbox/Switch): Only report "positive status" (e.g., Checked, Enabled/On).
-   - If an option is unchecked/disabled, **only read out the item name**; do not report its status.
-
-### E. If the image is a "Brand or Institutional Logo"
-1. **Identification**: Identify the brand or organization the logo belongs to. If it cannot be recognized at a glance, use visual features to perform a reverse image search.
-2. **Introduction**: Provide a brief background introduction of the entity.
-
-### F. Other Scenarios (Environments, Objects, People, etc.)
-1. **Scene Description**: Provide an objective and exhaustive scan of the environment. Describe the overall layout first, then describe important details.
-2. If a PDF or other document is received, read the document content, analyze it, and then display the **detailed** key content.
-3. If a video, audio, or other media file or URL is received, deeply understand the visual and audio content, and then display the **detailed** key content.`;
+   - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.`;
 
         const DEFAULT_OCR_PROMPT = `# SYSTEM ROLE
-You are a high-precision OCR (Optical Character Recognition) Engine designed for visually impaired users. You are NOT a conversational assistant. You are a text extraction machine.
+You are a high-precision Hybrid OCR Engine. You will receive TWO inputs for each page:
+1. An **Image** of the PDF page (Visual Layer).
+2. The **Raw Text** extracted from the PDF (Text Layer).
 
 # PRIMARY TASK
-Your ONLY objective is to transcribe 100% of the visible text from the provided image/PDF document into textual format.
+Combine the visual information and the raw text to produce a **Perfect Markdown** representation of the page.
 
-# STRICT COMPLIANCE RULES (ZERO TOLERANCE)
-1.  **VERBATIM TRANSCRIPTION**:
-    -   Extract EVERY single character, number, symbol, and punctuation mark exactly as seen.
-    -   **ABSOLUTELY NO SUMMARIES**. Do not summarize the content.
-    -   **ABSOLUTELY NO OMISSIONS**. Do not skip "unimportant" parts like footers, page numbers, or fine print.
-    -   **NO DESCRIPTIONS**: Do not describe the image (e.g., never say "This is an invoice"). Just output the text.
+# EXECUTION RULES
+1. **Verbatim Accuracy**:
+   - Use the "Raw Text" as the primary source for characters to ensure 100% spelling accuracy.
+   - Use the "Image" to correct any encoding errors, garbled text, or layout issues in the Raw Text.
+   - **DO NOT** summarize. **DO NOT** omit. Output every single word.
 
-2.  **FORMATTING**:
-    -   Use **Markdown** to preserve the visual structure (headings, lists, tables).
-    -   If there is a table, you MUST output a Markdown table.
-    -   If there is text in multiple columns, linearize it logically (column by column).
+2. **Structure & Formatting**:
+   - Use Markdown to replicate the visual structure.
+   - **Headings**: Use #, ##, ### based on font size in the Image.
+   - **Tables**: Reconstruct tables using Markdown syntax (\`| col | col |\`).
+   - **Lists**: Use standard bullets (-) or numbers (1.).
 
-3.  **ACCURACY & HALLUCINATION DEFENSE**:
-    -   If a word is blurry or illegible, mark it as \`[?]\`. Do not guess.
-    -   Do not correct spelling errors found in the source text. Transcribe them exactly as they appear.
+3. **Fallback**:
+   - If the Raw Text is empty or garbage, rely 100% on the Image (Visual OCR).
 
-4.  **MULTILINGUAL SUPPORT**:
-    -   Detect the language automatically (Traditional Chinese, English, etc.).
-    -   Do not translate unless the text is extracted first. (For this specific specific prompt, purely extract).
-
-# OUTPUT FORMAT
-Start immediately with the extracted text. Do not provide any introductory or concluding remarks.`;
+# OUTPUT
+Directly output the final Markdown content for this page. No conversational filler.`;
         
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE
 You are a world-class Translator and Terminologist fluent in all major languages, specializing in "Traditional Chinese (Hong Kong variant)". Your work is defined by three core principles: Faithfulness (信), Expressiveness (達), and Elegance (雅).
@@ -674,19 +634,13 @@ Translate the provided input text into high-quality **Traditional Chinese (Hong 
 2. **Localization (Hong Kong Style)**:
    - Use HK-specific vocabulary (e.g., "Smart phone" -> 智能電話, "Project" -> 專案/項目, "Quality" -> 質素, "Software" -> 軟件).
    - Avoid Mainland Chinese or Taiwanese idioms unless they are standard in HK professional contexts.
-3. **Tone Consistency**: Maintain the original tone (Formal/Casual/Academic) of the source text.
-4. **Formatting**: Preserve the original Markdown structure (headings, bullets, links).
-5. **No Filler**: Do not output "Here is the translation" or explanations. Just output the translation.
-
-# PROCESS (Internal)
-1. **Analyze**: Understand the context, genre, and tone.
-2. **Translate**: Convert text to HK Traditional Chinese.
-3. **Refine**: Check for flow, naturalness, and strict adherence to HK terminology.
+3. **Formatting**: Preserve the original Markdown structure (headings, bullets, links).
+4. **No Filler**: Do not output "Here is the translation" or explanations. Just output the translation.
 
 # OUTPUT
 Directly provide the final, polished Traditional Chinese translation.`;
         
-        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v6_ocr_feature";
+        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v7_hybrid";
 
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
@@ -960,93 +914,123 @@ Directly provide the final, polished Traditional Chinese translation.`;
             resetConversation(); playAudioCue('start');
             switchTab('chat');
             
-            const alwaysAI = document.getElementById('pdf-always-ai').checked;
             const needTranslate = document.getElementById('pdf-translate').checked;
 
             try {
-                updateStatusBar("正在分析 PDF...", "busy");
-                let extractedText = "";
-                let sourceMode = "text";
+                updateStatusBar("正在初始化混合閱讀模式...", "busy");
+                // 改為全新的混合處理模式
+                await performHybridAIProcessing(file, needTranslate);
 
-                if (!alwaysAI) {
-                    const localText = await extractTextFromPDF_Accurate(file);
-                    const cleanText = localText ? localText.replace(/\s/g, '') : "";
-                    if (cleanText.length > 50 && !/[\uFFFD]/.test(cleanText.slice(0, 100))) {
-                        extractedText = UniversalTextNormalizer.normalize(localText);
-                        sourceMode = "text";
-                        updateStatusBar("文字提取成功，準備處理...", "busy");
-                    } else {
-                        sourceMode = "image";
-                    }
-                } else {
-                    sourceMode = "image";
-                }
-
-                await performAIProcessing(file, sourceMode, extractedText, needTranslate);
-
-            } catch (e) { window.reportError("PDF Error", e); }
+            } catch (e) { window.reportError("PDF Process Failed", e); }
         }
 
-        async function performAIProcessing(file, sourceMode, textData, needTranslate) {
+        async function performHybridAIProcessing(file, needTranslate) {
             const controller = new AbortController(); 
-            let accumulatedText = "";
+            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+            
+            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
 
-            if (sourceMode === "image") {
-                let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-                let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
-                let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
-                if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
-
-                // 如果是 Datalab/Chandra OCR，直接進行全檔案處理，跳過分頁截圖
-                if (ocrProvider === 'datalab') {
-                     updateStatusBar("正在上傳整份 PDF 至 Chandra OCR...", "busy");
-                     let fileData = await readFileAsBase64(file);
-                     accumulatedText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
-                } else {
-                    // Gemini/OpenAI 仍需分頁處理
-                    const arrayBuffer = await file.arrayBuffer();
-                    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
-                    updateVisualProgress(true, `OCR 處理中...`);
-                    
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        if (i % 5 === 0) document.getElementById('visual-progress').innerText = `OCR: ${i} / ${pdf.numPages}`;
-                        const page = await pdf.getPage(i);
-                        const viewportRaw = page.getViewport({ scale: 1.0 });
-                        const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = page.getViewport({ scale }).width; canvas.height = page.getViewport({ scale }).height;
-                        await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
-                        
-                        if (!isCanvasBlank(canvas)) {
-                            const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                            let pageText = await callAI(ocrProvider, DEFAULT_OCR_PROMPT, [], "Transcribe EXACTLY.", imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
-                            accumulatedText += `[Page ${i}]\n${UniversalTextNormalizer.normalize(pageText)}\n\n`;
-                        }
-                        canvas.remove(); await sleep(200); 
-                    }
-                    updateVisualProgress(false);
-                }
-            } else {
-                accumulatedText = textData; 
+            // 如果使用者選了 Datalab (Chandra)，使用其專屬的 Whole-File OCR
+            if (ocrProvider === 'datalab') {
+                 updateStatusBar("上傳整份文件至 Chandra OCR...", "busy");
+                 let fileData = await readFileAsBase64(file);
+                 let fullText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
+                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(fullText));
+                 setTimeout(() => aiMsg.focus(), 100);
+                 updateStatusBar("完成");
+                 playAudioCue('success');
+                 return;
             }
 
-            if (needTranslate) {
-                let transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
-                let transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
-                let transApiKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
-                updateStatusBar("正在翻譯...", "busy");
-                const res = await callAI(transProvider, memoryPrompts.translate, [], `[SOURCE]:\n${accumulatedText}`, null, null, controller.signal, transModel, transApiKey);
+            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+            
+            updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
+            
+            // 建立一個即時顯示容器，因為我們要串流顯示每一頁
+            const containerDiv = document.createElement('div');
+            containerDiv.className = `message assistant`;
+            containerDiv.innerHTML = `<h1 class="msg-heading">AI 助理 (即時處理中)：</h1><div class="markdown-body" id="streaming-output"></div>`;
+            document.getElementById('chat-output').appendChild(containerDiv);
+            const outputArea = containerDiv.querySelector('#streaming-output');
+            toggleExportButtons(true);
+
+            let fullAccumulatedText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
+                document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
+
+                // 1. 取得 Text Layer (文字提示)
+                const page = await pdf.getPage(i);
+                let textLayerContent = "";
+                try {
+                    const textContent = await page.getTextContent();
+                    textLayerContent = textContent.items.map(item => item.str).join(" ");
+                } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
+
+                // 2. 取得 Visual Layer (圖片)
+                const viewportRaw = page.getViewport({ scale: 1.0 });
+                const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
+                const canvas = document.createElement('canvas');
+                canvas.width = page.getViewport({ scale }).width; 
+                canvas.height = page.getViewport({ scale }).height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
                 
-                const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res));
-                setTimeout(() => aiMsg.focus(), 100);
+                if (isCanvasBlank(canvas)) {
+                    // 空白頁跳過
+                    canvas.remove();
+                    continue;
+                }
+                const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+                canvas.remove();
 
-            } else {
-                let displayText = accumulatedText.replace(/^\[Page (\d+)\]/gm, "## [Page $1]");
-                const aiMsg = addMessage('assistant', displayText);
-                setTimeout(() => aiMsg.focus(), 100);
+                // 3. 構建混合 Prompt
+                let pagePrompt = `[Page ${i}]\n`;
+                if (textLayerContent && textLayerContent.length > 10) {
+                    pagePrompt += `Here is the raw text extracted from this page via software. It may have layout errors but the spelling is mostly correct. Use it as a ground truth reference:\n"""\n${textLayerContent.substring(0, 8000)}\n"""\n\n`;
+                } else {
+                    pagePrompt += `No raw text available for this page. Rely solely on visual OCR.\n`;
+                }
+
+                // 4. 呼叫 AI (單頁處理)
+                // 注意：如果需要翻譯，直接在 Prompt 裡要求翻譯，或者先 OCR 再翻譯。
+                // 為了效率，若勾選翻譯，我們修改 System Prompt 讓它直接輸出中文。
+                let currentSystemPrompt = memoryPrompts.ocr;
+                if (needTranslate) {
+                    currentSystemPrompt += "\n\nIMPORTANT: After extraction, TRANSLATE the content into Traditional Chinese (Hong Kong) immediately.";
+                }
+
+                try {
+                    let pageResult = await callAI(ocrProvider, currentSystemPrompt, [], pagePrompt, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                    
+                    // 格式化輸出
+                    let cleanResult = UniversalTextNormalizer.normalize(pageResult);
+                    fullAccumulatedText += `## [第 ${i} 頁]\n\n${cleanResult}\n\n---\n\n`;
+                    
+                    // 即時渲染 Markdown 到畫面上
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
+                    
+                    // 滾動到底部
+                    // containerDiv.scrollIntoView({ behavior: "smooth", block: "end" });
+
+                } catch (e) {
+                    console.error(`Page ${i} AI Error:`, e);
+                    fullAccumulatedText += `## [第 ${i} 頁]\n\n(此頁處理失敗: ${e.message})\n\n---\n\n`;
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
+                }
+
+                // 避免 Rate Limit，稍微暫停
+                await sleep(500);
             }
 
-            playAudioCue('success'); updateStatusBar("完成");
+            updateVisualProgress(false);
+            updateStatusBar("文件處理完成");
+            playAudioCue('success');
+            containerDiv.focus();
         }
 
         function updateVisualProgress(show, text="") {
@@ -1055,65 +1039,19 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else { el.classList.remove('active'); el.innerText = ""; }
         }
 
+        // 保留舊的提取函式作為備用或比對
         async function extractTextFromPDF_Accurate(file) {
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: './pdf-dist/cmaps/', cMapPacked: true }).promise;
+                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
                 let fullText = "";
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const content = await pdf.getPage(i).then(p => p.getTextContent());
-                    const items = content.items.filter(item => item.str.trim().length > 0);
-                    if (items.length === 0) { fullText += `[Page ${i}]\n\n`; continue; }
-                    
-                    const viewport = await pdf.getPage(i).then(p => p.getViewport({scale:1.0}));
-                    const normItems = items.map(it => ({ str: it.str, x: it.transform[4], y: viewport.height - it.transform[5], w: it.width, h: it.height || 10, fontHeight: Math.abs(it.transform[3]) }));
-                    const columns = detectColumns(normItems, viewport.width);
-                    
-                    let pageStr = "";
-                    for (const col of columns) {
-                        col.sort((a, b) => (Math.abs(a.y - b.y) < Math.min(a.fontHeight, b.fontHeight)*0.5) ? (a.x - b.x) : (a.y - b.y));
-                        pageStr += assembleLinesAdaptive(col) + "\n";
-                    }
-                    fullText += `[Page ${i}]\n${pageStr}\n\n`;
+                    const strings = content.items.map(item => item.str);
+                    fullText += `[Page ${i}]\n${strings.join(" ")}\n\n`;
                 }
                 return fullText;
             } catch (e) { return null; }
-        }
-
-        function detectColumns(items, width) {
-            const bins = new Array(Math.ceil(width/2)).fill(0);
-            items.forEach(it => { for(let k=Math.floor(it.x/2); k<=Math.floor((it.x+it.w)/2); k++) if(k>=0 && k<bins.length) bins[k]=1; });
-            let gaps=[], cur={s:-1,w:0};
-            for(let i=Math.floor(bins.length*0.2); i<Math.floor(bins.length*0.8); i++) {
-                if(bins[i]===0) { if(cur.s===-1) cur.s=i; cur.w++; }
-                else { if(cur.w>0) { gaps.push({...cur}); cur={s:-1,w:0}; } }
-            }
-            const validGap = gaps.reduce((m,g)=>g.w>m.w?g:m, {w:0});
-            if (validGap.w > bins.length*0.02) {
-                const split = (validGap.s + validGap.w/2)*2;
-                return [items.filter(i=>i.x+i.w<split), items.filter(i=>i.x>=split)];
-            }
-            return [items];
-        }
-
-        function assembleLinesAdaptive(items) {
-            if(!items.length) return "";
-            let res = "", last = null;
-            for (let it of items) {
-                if (last) {
-                    if (it.y - last.y > Math.min(last.fontHeight, it.fontHeight)*0.5) res += "\n";
-                    else {
-                        const tA = UniversalTextNormalizer.getScriptType(last.str.slice(-1));
-                        const tB = UniversalTextNormalizer.getScriptType(it.str.charAt(0));
-                        const gap = it.x - (last.x + last.w);
-                        if (tA==='sea'||tB==='sea'||tA==='rtl'||tB==='rtl') { if(gap>it.fontHeight*2) res+=" "; }
-                        else if ((tA==='cjk'&&tB==='cjk')||(tA==='cjk'&&tB==='latin')||(tA==='latin'&&tB==='cjk')) { if(gap>it.fontHeight*1.5) res+=" "; }
-                        else if (gap > it.fontHeight*0.35) res += " ";
-                    }
-                }
-                res += it.str; last = it;
-            }
-            return res;
         }
 
         function initVoiceSystem() {
