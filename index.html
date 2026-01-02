@@ -1,11 +1,9 @@
---- START OF FILE index.html ---
-
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 (2025 Hybrid Pro 版)</title>
+    <title>AI 視障助理 - 文字讀取專家</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -292,7 +290,7 @@
 
     <!-- 1. 頂部狀態 -->
     <header role="banner">
-        <div id="status-bar" role="status" aria-live="polite">系統初始化中...</div>
+        <div id="status-bar" role="status" aria-live="polite">系統已啟動，請選擇功能</div>
         <div id="visual-progress" aria-hidden="true"></div>
     </header>
 
@@ -337,11 +335,11 @@
 
         <!-- B. 工具視圖 (Tools View) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
-            <h2 tabindex="-1" id="tools-title">工具箱 (Tools)</h2>
+            <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
             
             <!-- 新增：快速 OCR 功能區塊 -->
             <div class="settings-card" style="border-color: var(--accent-color);">
-                <h3>📸 快速文字識別 (Quick OCR)</h3>
+                <h3>📸 Chandra OCR</h3>
                 <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
                 
                 <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
@@ -356,7 +354,7 @@
             </div>
 
             <div class="settings-card">
-                <h3>📄 PDF 智能混合閱讀 (Hybrid Reader)</h3>
+                <h3>📄 俗業讀取 (General Reader)</h3>
                 <p style="color:#aaa; font-size:0.9rem;">
                     2025 新功能：結合「文字層」與「視覺 AI」進行逐頁校對。
                     即使超過 100 頁也能完整輸出不遺漏。
@@ -481,7 +479,7 @@
         </button>
         <button type="button" class="nav-btn" id="nav-tools" role="tab" aria-selected="false" aria-controls="view-tools" onclick="switchTab('tools')">
             <span class="icon">🛠️</span>
-            <span>工具</span>
+            <span>文字讀取</span>
         </button>
         <button type="button" class="nav-btn" id="nav-settings" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')">
             <span class="icon">⚙️</span>
@@ -597,31 +595,64 @@ Regardless of the task, you must strictly adhere to the following three major pr
 3. **Content Style**:
    - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.`;
 
-        const DEFAULT_OCR_PROMPT = `# SYSTEM ROLE
-You are a high-precision Hybrid OCR Engine. You will receive TWO inputs for each page:
-1. An **Image** of the PDF page (Visual Layer).
-2. The **Raw Text** extracted from the PDF (Text Layer).
+        // 【更新】第一專屬指令：混合模式 (文字+圖片)
+        const HYBRID_PROMPT = `# SYSTEM ROLE
+You are a specialized "Hybrid OCR & Accessibility Engine" for visually impaired users.
+You will receive two inputs for a single PDF page:
+1. **Raw Text**: Extracted via software (may contain garbled text/mojibake).
+2. **Page Image**: The visual ground truth.
 
-# PRIMARY TASK
-Combine the visual information and the raw text to produce a **Perfect Markdown** representation of the page.
+# MISSION
+Reconstruct the page content into perfect **Markdown** format by cross-referencing the Raw Text and the Page Image.
 
-# EXECUTION RULES
-1. **Verbatim Accuracy**:
-   - Use the "Raw Text" as the primary source for characters to ensure 100% spelling accuracy.
-   - Use the "Image" to correct any encoding errors, garbled text, or layout issues in the Raw Text.
-   - **DO NOT** summarize. **DO NOT** omit. Output every single word.
+# STRICT EXECUTION RULES
+1. **Zero Omission Policy**:
+   - Transcribe EVERY single character visible in the image.
+   - Do NOT summarize. Do NOT skip headers, footers, or sidebars.
+   - If the "Raw Text" is incomplete, rely on the "Page Image" to fill in the gaps.
 
-2. **Structure & Formatting**:
-   - Use Markdown to replicate the visual structure.
-   - **Headings**: Use #, ##, ### based on font size in the Image.
-   - **Tables**: Reconstruct tables using Markdown syntax (\`| col | col |\`).
-   - **Lists**: Use standard bullets (-) or numbers (1.).
+2. **Image Description (Accessibility)**:
+   - If the page contains charts, diagrams, or photos, you must insert a description block in the exact location.
+   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
+   - Description must be objective and detailed (colors, positions, text inside image).
 
-3. **Fallback**:
-   - If the Raw Text is empty or garbage, rely 100% on the Image (Visual OCR).
+3. **Format & Language**:
+   - Use strict Markdown (Headers \`#\`, Lists \`-\`, Tables \`| |\`).
+   - If the content is in a foreign language, translate it to **Traditional Chinese (Hong Kong)** immediately.
+   - If the content is already Chinese, preserve it exactly.
 
 # OUTPUT
-Directly output the final Markdown content for this page. No conversational filler.`;
+Output ONLY the final Markdown content. No conversational filler (e.g., "Here is the text").`;
+
+        // 【更新】第二專屬指令：純視覺模式 (僅圖片)
+        const VISUAL_PROMPT = `# SYSTEM ROLE
+You are a high-precision "Visual OCR Expert" for visually impaired users.
+You will receive a **Page Image**.
+
+# MISSION
+Visually recognize and transcribe all text from the image into **Markdown**, and describe any visual elements.
+
+# STRICT EXECUTION RULES
+1. **Verbatim Transcription**:
+   - Transcribe text exactly as seen. Do NOT summarize or paraphrase.
+   - Pay attention to multi-column layouts; read from top-left to bottom-right logically.
+   - Include page numbers and small print.
+
+2. **Visual Description**:
+   - Detect all non-text elements (photos, icons, charts).
+   - Insert a description block at the corresponding position.
+   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
+
+3. **Format & Language**:
+   - Output must be in **Traditional Chinese (Hong Kong)**.
+   - If the original text is English/Other, translate it fluently while preserving the original structure.
+   - Use Markdown tables for any grid data found in the image.
+
+# OUTPUT
+Output ONLY the final Markdown content. Do not output code blocks (\`\`\`markdown) wrapper, just the raw content.`;
+        
+        // 為了相容設定介面的 "DEFAULT_OCR_PROMPT"，我們先用 HYBRID 填充，但實際執行會動態切換
+        const DEFAULT_OCR_PROMPT = HYBRID_PROMPT;
         
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE
 You are a world-class Translator and Terminologist fluent in all major languages, specializing in "Traditional Chinese (Hong Kong variant)". Your work is defined by three core principles: Faithfulness (信), Expressiveness (達), and Elegance (雅).
@@ -640,11 +671,11 @@ Translate the provided input text into high-quality **Traditional Chinese (Hong 
 # OUTPUT
 Directly provide the final, polished Traditional Chinese translation.`;
         
-        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v7_hybrid";
+        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
 
         const PROVIDERS = {
-            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] },
-            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-exp:free", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
+            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
+            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-001", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-001", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
@@ -958,7 +989,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                  return;
             }
 
-            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式
+            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式 (Sequential Hybrid Processing)
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
             
@@ -978,70 +1009,104 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
                 document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
-                // 1. 取得 Text Layer (文字提示) - 僅提取純文字，不進行排版處理
+                // 1. 取得 Text Layer (文字提示)
                 const page = await pdf.getPage(i);
                 let textLayerContent = "";
+                let hasExtractedText = false;
+                
                 try {
                     const textContent = await page.getTextContent();
                     textLayerContent = textContent.items.map(item => item.str).join(" ");
+                    // 判斷是否成功獲取到足夠的文字 (例如 > 20 字元才算有效提取)
+                    if (textLayerContent && textLayerContent.trim().length > 20) {
+                        hasExtractedText = true;
+                    }
                 } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
 
-                // 2. 取得 Visual Layer (圖片)
+                // 2. 取得 Visual Layer (壓縮圖片)
                 const viewportRaw = page.getViewport({ scale: 1.0 });
+                // 使用 2.0 倍率以確保文字清晰，但限制最大維度以防 OOM
                 const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
-                const canvas = document.createElement('canvas');
+                let canvas = document.createElement('canvas');
                 canvas.width = page.getViewport({ scale }).width; 
                 canvas.height = page.getViewport({ scale }).height;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
                 
                 if (isCanvasBlank(canvas)) {
-                    // 空白頁跳過
                     canvas.remove();
-                    continue;
+                    continue; // 空白頁跳過
                 }
-                const imgBase64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-                canvas.remove();
+                
+                // 轉為 JPEG 格式，品質 0.8，平衡清晰度與封包大小
+                let imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-                // 3. 構建混合 Prompt
-                let pagePrompt = `[Page ${i}]\n`;
-                if (textLayerContent && textLayerContent.length > 10) {
-                    pagePrompt += `Here is the raw text extracted from this page via software. It may have layout errors but the spelling is mostly correct. Use it as a ground truth reference:\n"""\n${textLayerContent.substring(0, 8000)}\n"""\n\n`;
+                // 3. 根據提取結果選擇專屬指令 (Branching Logic)
+                let selectedSystemPrompt = "";
+                let userPromptContent = "";
+
+                if (hasExtractedText) {
+                    // 情況 A: 成功獲取字符 -> 使用混合模式 (Hybrid Prompt)
+                    // 將提取的亂碼/文字作為 "Raw Text" 傳入，並附上圖片
+                    selectedSystemPrompt = HYBRID_PROMPT;
+                    userPromptContent = `[Page ${i} Raw Text Start]\n${textLayerContent.substring(0, 8000)}\n[Page ${i} Raw Text End]\n\nPlease process this page according to the Hybrid rules.`;
                 } else {
-                    pagePrompt += `No raw text available for this page. Rely solely on visual OCR.\n`;
+                    // 情況 B: 獲取失敗 (純圖/掃描) -> 使用純視覺模式 (Visual Prompt)
+                    // 僅指示 AI 閱讀圖片
+                    selectedSystemPrompt = VISUAL_PROMPT;
+                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer. Please perform strict Visual OCR on the image.`;
                 }
 
-                // 4. 呼叫 AI (單頁處理)
-                // 注意：如果需要翻譯，直接在 Prompt 裡要求翻譯，或者先 OCR 再翻譯。
-                // 為了效率，若勾選翻譯，我們修改 System Prompt 讓它直接輸出中文。
-                let currentSystemPrompt = memoryPrompts.ocr;
+                // 如果用戶勾選了翻譯，我們在 User Prompt 尾端再強調一次，雖然 System Prompt 已包含
                 if (needTranslate) {
-                    currentSystemPrompt += "\n\nIMPORTANT: After extraction, TRANSLATE the content into Traditional Chinese (Hong Kong) immediately.";
+                    userPromptContent += "\n\nREMINDER: Translate the output into Traditional Chinese (Hong Kong).";
                 }
 
                 try {
-                    let pageResult = await callAI(ocrProvider, currentSystemPrompt, [], pagePrompt, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                    // 4. 呼叫 AI
+                    let pageResult = await callAI(
+                        ocrProvider, 
+                        selectedSystemPrompt, 
+                        [], // No history for OCR pages to save context window
+                        userPromptContent, 
+                        imgBase64, 
+                        "image/jpeg", 
+                        controller.signal, 
+                        ocrModel, 
+                        ocrApiKey
+                    );
                     
                     // 格式化輸出
                     let cleanResult = UniversalTextNormalizer.normalize(pageResult);
-                    
-                    // 修改：不再強制加入 ## 標題，改為直接串接內容
                     fullAccumulatedText += `${cleanResult}\n\n`;
                     
-                    // 即時渲染 Markdown 到畫面上
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
+                    // 追加節點模式 (Append Node)
+                    const pageNode = document.createElement('div');
+                    pageNode.className = 'new-page';
+                    pageNode.style.marginBottom = "20px";
+                    pageNode.style.borderBottom = "1px dashed #444";
+                    pageNode.style.paddingBottom = "20px";
+                    // 加上頁碼標示，方便閱讀
+                    pageNode.innerHTML = `<h3>Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(cleanResult));
+                    outputArea.appendChild(pageNode);
                     
                 } catch (e) {
                     console.error(`Page ${i} AI Error:`, e);
-                    fullAccumulatedText += `\n\n(第 ${i} 頁處理失敗: ${e.message})\n\n`;
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(fullAccumulatedText));
+                    const errorNode = document.createElement('div');
+                    errorNode.innerHTML = `<p style="color:red">Page ${i} Error: ${e.message}</p>`;
+                    outputArea.appendChild(errorNode);
+                } finally {
+                    // 5. 記憶體釋放 (Critical for long PDFs)
+                    canvas.remove();
+                    canvas = null;
+                    imgBase64 = null;
                 }
 
-                // 5. Google Gemini 頻率限制保護 (Rate Limit Protection)
+                // 6. 分頁延遲 (Stability Delay)
+                // Gemini 2.5 Flash 雖然快，但為了避免瞬間並發導致瀏覽器卡頓或 API 429，保留短暫緩衝
                 if (ocrProvider === 'gemini') {
-                    updateStatusBar(`冷卻中 (避免 API 限制)...`, "busy");
-                    await sleep(8000); // 至少 8 秒
+                    await sleep(2000); // 2秒
                 } else {
-                    await sleep(500); // 其他模型只需短暫休息
+                    await sleep(500); // 其他模型 0.5秒
                 }
             }
 
@@ -1147,7 +1212,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             b.innerText = t; 
         }
 
-        function showReadyStatus() { updateStatusBar("準備就緒"); }
+        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
         function addMessage(role, content) {
