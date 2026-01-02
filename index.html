@@ -675,7 +675,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
-            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "google/gemini-2.0-flash-001", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["google/gemini-2.0-flash-001", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] },
+            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
@@ -1535,8 +1535,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else {
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
-                    headers['HTTP-Referer'] = 'https://ai-vision.app'; 
-                    headers['X-Title'] = 'AI Vision';
                     if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
                 } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
                 else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
