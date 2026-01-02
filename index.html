@@ -1104,7 +1104,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 // 6. 分頁延遲 (Stability Delay)
                 // Gemini 2.5 Flash 雖然快，但為了避免瞬間並發導致瀏覽器卡頓或 API 429，保留短暫緩衝
                 if (ocrProvider === 'gemini') {
-                    await sleep(2000); // 2秒
+                    await sleep(6000); // 6秒
                 } else {
                     await sleep(500); // 其他模型 0.5秒
                 }
