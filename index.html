@@ -97,7 +97,6 @@
         #status-bar.ready { background: #004400; }
         #status-bar.busy { background: #664400; }
         #status-bar.error { background: #660000; }
-        #status-bar.recording { background: #aa0000; animation: pulse 1s infinite; }
         
         #visual-progress {
             background: #333; color: #88ccff; font-size: 0.85rem; 
@@ -219,14 +218,7 @@
         /* 輸入區樣式 */
         .input-row { display: flex; gap: 8px; align-items: flex-end; }
         #user-input { min-height: 60px; max-height: 150px; margin-bottom: 0; resize: none; }
-        #voice-btn { 
-            width: 60px; height: 60px; border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.5rem; padding: 0; margin: 0;
-            flex-shrink: 0;
-        }
-        #voice-btn.recording { background-color: #ff3333 !important; animation: pulse 1s infinite; }
-        #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
+        #submit-btn { width: 90px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
         /* Utility Row & Checkbox */
         .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
@@ -265,8 +257,6 @@
         .hidden { display: none !important; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
         
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
         /* 電腦版適配：側邊欄 */
         @media (min-width: 768px) {
             body {
@@ -301,7 +291,7 @@
             <div id="chat-container">
                 <div class="message assistant">
                     <h1 class="msg-heading">AI 助理：</h1>
-                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF，或使用語音進行對話。</div>
+                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字或上傳圖片/PDF進行對話。</div>
                 </div>
                 <div id="chat-output"></div>
             </div>
@@ -326,7 +316,7 @@
                 </div>
                 
                 <form onsubmit="handleSubmit(event)" class="input-row">
-                    <button type="button" id="voice-btn" class="secondary" title="語音輸入 (按住不放)" aria-label="語音輸入">🎤</button>
+                    <!-- 已移除語音按鈕 -->
                     <textarea id="user-input" placeholder="輸入訊息..." rows="1" aria-label="輸入訊息區"></textarea>
                     <button type="submit" id="submit-btn" title="發送">傳送</button>
                 </form>
@@ -446,14 +436,8 @@
                 </div>
 
                 <div class="settings-card">
-                    <h3>🎤 語音與操作</h3>
-                    <select id="voice-engine" onchange="saveVoiceSettings()">
-                        <option value="browser">瀏覽器原生 (免費)</option>
-                        <option value="openai">OpenAI Whisper (付費)</option>
-                        <option value="groq">Groq Whisper (快速)</option>
-                    </select>
-                    <input type="password" id="voice-api-key" placeholder="語音專用 Key (選填)" onchange="saveVoiceSettings()">
-                    
+                    <h3>⌨️ 操作設定</h3>
+                    <!-- 語音相關設定已移除 -->
                     <label class="check-btn">
                         <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
@@ -510,6 +494,7 @@
         // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
+        let audioContext = null; // 用於提示音
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -702,40 +687,17 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
         let currentActiveModelId = "";
         let selectedFile = null;
-        let recognition = null; 
-        let mediaRecorder = null;
-        let audioChunks = [];
         let chatHistory = [];
-        let audioContext = null;
         let allCurrentModels = [];
-        let isVoiceRecording = false;
         let specificConfigs = { ocr: null, translate: null };
         let memoryPrompts = { chat: "", ocr: "", translate: "" };
         let currentEditingMode = 'chat'; 
 
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        function ensureAudioContext() {
-            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') audioContext.resume().catch(e => console.error(e));
-        }
-
-        ['click', 'touchstart', 'keydown'].forEach(evt => {
-            document.addEventListener(evt, ensureAudioContext, { once: false, passive: true });
-        });
+        // 保留 playAudioCue 用於操作回饋，但移除語音相關初始化
         
         document.addEventListener('keydown', handleGlobalShortcuts);
-
-        function initVoiceButtonEvents() {
-            const btn = document.getElementById('voice-btn');
-            if (!btn) return;
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); ensureAudioContext(); startVoiceRecording(); }, {passive: false});
-            btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
-            btn.addEventListener('mousedown', (e) => { ensureAudioContext(); startVoiceRecording(); });
-            btn.addEventListener('mouseup', (e) => { stopVoiceRecording(); });
-            btn.addEventListener('mouseleave', (e) => { if(isVoiceRecording) stopVoiceRecording(); });
-            btn.addEventListener('contextmenu', (e) => e.preventDefault());
-        }
 
         function handleGlobalShortcuts(e) {
             if (!e.altKey || !e.shiftKey) return;
@@ -743,7 +705,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
 
-            if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
             const actions = {
                 's': () => switchTab('settings'),
                 'c': { id: 'copy-btn' },
@@ -758,7 +719,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 '3': () => switchTab('settings')
             };
             if (actions[key]) {
-                e.preventDefault(); ensureAudioContext();
+                e.preventDefault(); 
                 if (typeof actions[key] === 'function') actions[key]();
                 else {
                     const target = document.getElementById(actions[key].id);
@@ -780,10 +741,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const orSearch = document.getElementById('openrouter-web-search');
                 if(orSearch) orSearch.checked = (localStorage.getItem('openrouter_web_search') === 'true');
                 
-                const savedVoiceEngine = localStorage.getItem('voice_engine');
-                if (savedVoiceEngine) document.getElementById('voice-engine').value = savedVoiceEngine;
-                const savedVoiceKey = localStorage.getItem('voice_api_key');
-                if (savedVoiceKey) document.getElementById('voice-api-key').value = savedVoiceKey;
                 const savedEnter = localStorage.getItem('enter_to_send');
                 document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
 
@@ -813,11 +770,9 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 }
                 
                 handleProviderChange(false); 
-                initVoiceSystem();
                 initPasteImage();
                 initDragAndDrop();
                 initEnterKey();
-                initVoiceButtonEvents();
                 
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
@@ -929,22 +884,24 @@ Directly provide the final, polished Traditional Chinese translation.`;
         }
 
         function playAudioCue(type) {
-            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            const now = audioContext.currentTime;
-            
-            if (type === 'start') { 
-                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); 
-            } else if (type === 'success') { 
-                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); 
-            } else if (type === 'error') { 
-                oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); 
-            } else if (type === 'abort') {
-                oscillator.type = 'triangle'; oscillator.frequency.setValueAtTime(400, now); oscillator.frequency.linearRampToValueAtTime(200, now + 0.1); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1);
-            }
+            try {
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') audioContext.resume();
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                const now = audioContext.currentTime;
+                
+                if (type === 'start') { 
+                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); 
+                } else if (type === 'success') { 
+                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); 
+                } else if (type === 'error') { 
+                    oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); 
+                }
+            } catch(e) { console.warn("Audio Cue Failed", e); }
         }
 
         function resetConversation() {
@@ -1175,83 +1132,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else { el.classList.remove('active'); el.innerText = ""; }
         }
 
-        function initVoiceSystem() {
-            const engine = document.getElementById('voice-engine').value;
-            if (engine === 'browser') initBrowserSpeech(); 
-            else if (recognition) { recognition.stop(); recognition = null; }
-        }
-
-        function initBrowserSpeech() {
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                recognition = new SpeechRecognition(); 
-                recognition.lang = 'zh-HK'; recognition.continuous = true; recognition.interimResults = true; 
-                recognition.onstart = () => { isVoiceRecording=true; document.getElementById('voice-btn').classList.add('recording'); updateStatusBar('聆聽中...', 'recording'); playAudioCue('start'); };
-                recognition.onresult = (e) => {
-                    let t = ''; for (let i = e.resultIndex; i < e.results.length; ++i) if (e.results[i].isFinal) t += e.results[i][0].transcript;
-                    if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
-                };
-                recognition.onerror = () => { stopVoiceInputUI(); playAudioCue('error'); };
-                recognition.onend = () => { if(isVoiceRecording) playAudioCue('abort'); stopVoiceInputUI(); };
-            }
-        }
-
-        function getSupportedMimeType() {
-            if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
-            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
-            if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
-            return ''; 
-        }
-
-        async function startVoiceRecording() {
-            ensureAudioContext(); if (isVoiceRecording) return;
-            const engine = document.getElementById('voice-engine').value;
-            if (engine === 'browser') { if (recognition) try { recognition.start(); } catch(e){} }
-            else {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const mimeType = getSupportedMimeType();
-                    const options = mimeType ? { mimeType } : undefined;
-                    
-                    mediaRecorder = new MediaRecorder(stream, options); 
-                    audioChunks = []; 
-                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                    mediaRecorder.onstop = async () => { 
-                        await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
-                        stream.getTracks().forEach(t=>t.stop()); 
-                    };
-                    mediaRecorder.start(); isVoiceRecording = true; document.getElementById('voice-btn').classList.add('recording'); playAudioCue('start');
-                } catch (e) { showTransientStatus('麥克風錯誤', 'error'); }
-            }
-        }
-
-        function stopVoiceRecording() {
-            if (!isVoiceRecording) return;
-            ensureAudioContext(); isVoiceRecording = false; playAudioCue('success');
-            if (document.getElementById('voice-engine').value === 'browser' && recognition) recognition.stop();
-            else if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        }
-
-        function stopVoiceInputUI() {
-            isVoiceRecording = false; document.getElementById('voice-btn').classList.remove('recording');
-            if (!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus();
-        }
-
-        async function processWhisperAudio(blob, engine, mime) {
-            let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
-            if (!apiKey) return alert("需 API Key");
-            const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
-            fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
-            updateStatusBar("語音轉譯中...", "busy");
-            try {
-                const res = await fetch(engine==='openai'?"https://api.openai.com/v1/audio/transcriptions":"https://api.groq.com/openai/v1/audio/transcriptions", { method:'POST', headers:{'Authorization':`Bearer ${apiKey}`}, body:fd });
-                const data = await res.json();
-                if (data.text) { document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + data.text; showReadyStatus(); }
-            } catch(e) { window.reportError("Whisper Error", e); }
-            finally { stopVoiceInputUI(); }
-        }
-
-        function saveVoiceSettings() { localStorage.setItem('voice_engine', document.getElementById('voice-engine').value); localStorage.setItem('voice_api_key', document.getElementById('voice-api-key').value); initVoiceSystem(); }
         function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
         function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
         function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
@@ -1358,7 +1238,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            saveVoiceSettings(); 
+            
             showTransientStatus("設定已儲存");
             switchTab(lastActiveTabId || 'chat');
         }
@@ -1413,7 +1293,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
         function readFileAsText(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result); rd.onerror=j; rd.readAsText(f);}); }
 
         async function handleSubmit(e) {
-            e.preventDefault(); ensureAudioContext();
+            e.preventDefault(); 
             const txt = document.getElementById('user-input').value.trim();
             if(!txt && !selectedFile) return showTransientStatus("請輸入內容", 'error');
             
