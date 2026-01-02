@@ -387,23 +387,22 @@
 
             <div id="settings-area">
                 <div class="settings-card">
-                    <h3>🤖 AI 模型設定</h3>
+                    <h3>🤖 AI 對話模型設定</h3>
                     <div style="background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
                         ⚠️ 2025 提示：推薦使用 Google Gemini 或 OpenRouter。
                     </div>
                     
-                    <label>主要服務商:</label>
+                    <label>主要服務商 (對話/分析):</label>
                     <select id="provider-select" onchange="handleProviderChange(true)">
                         <option value="gemini">Google Gemini (推薦)</option>
                         <option value="openrouter">OpenRouter (推薦)</option>
-                        <option value="datalab">Datalab (Chandra OCR)</option>
                         <option value="openai">OpenAI</option>
                         <option value="groq">Groq</option>
                         <option value="mistral">Mistral AI</option>
                         <option value="perplexity">Perplexity</option>
                     </select>
 
-                    <label>API Key:</label>
+                    <label>對話 AI API Key:</label>
                     <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
                     
                     <label>模型過濾:</label>
@@ -417,6 +416,23 @@
                     <div id="custom-model-wrapper" class="hidden" style="margin-top:10px;">
                         <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
                     </div>
+                </div>
+
+                <!-- 新增：Chandra OCR 專屬設定 -->
+                <div class="settings-card" style="border-left: 5px solid #ff00ff;">
+                    <h3>📸 Chandra OCR 設定 (Datalab)</h3>
+                    <p style="font-size:0.9rem; color:#ccc;">此設定專用於「文字讀取」功能中的快速 OCR。</p>
+                    
+                    <label>Datalab API Key:</label>
+                    <input type="password" id="datalab-key" placeholder="在此輸入 Chandra / Datalab API Key">
+                    
+                    <label>辨識精確度 (Accuracy):</label>
+                    <select id="datalab-mode">
+                        <option value="fast">快速 (Fast)</option>
+                        <option value="balanced" selected>平衡 (Balanced)</option>
+                        <option value="accurate">高精確度 (Accurate) - 費用較高</option>
+                    </select>
+                    <p style="font-size:0.9rem; color:#aaa;">* 「高精確度」模式會強制進行完整分析，適合手寫或複雜排版，但消耗點數較多。</p>
                 </div>
 
                 <div class="settings-card">
@@ -676,6 +692,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
+            // datalab 已從主要對話列表中移除，僅保留內部定義供 callAI 使用
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
@@ -770,6 +787,12 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const savedEnter = localStorage.getItem('enter_to_send');
                 document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
 
+                // 載入 Chandra OCR 設定
+                const savedDatalabKey = localStorage.getItem('datalab_key');
+                if (savedDatalabKey) document.getElementById('datalab-key').value = savedDatalabKey;
+                const savedDatalabMode = localStorage.getItem('datalab_mode');
+                if (savedDatalabMode) document.getElementById('datalab-mode').value = savedDatalabMode;
+
                 const savedSpecifics = localStorage.getItem('specific_configs');
                 if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
                 updateConfigStatusDisplay();
@@ -778,7 +801,13 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
 
                 if (savedProvider && PROVIDERS[savedProvider]) {
-                    document.getElementById('provider-select').value = savedProvider;
+                    // 如果之前的設定是 datalab (因為舊版有)，強制切回 gemini
+                    if (savedProvider === 'datalab') {
+                        document.getElementById('provider-select').value = 'gemini';
+                        localStorage.setItem('provider', 'gemini');
+                    } else {
+                        document.getElementById('provider-select').value = savedProvider;
+                    }
                 } else {
                     document.getElementById('provider-select').value = 'gemini'; 
                 }
@@ -814,14 +843,13 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const file = input.files[0];
             if (!file) return;
             
-            // 強制檢查 Datalab Key
-            const datalabKey = localStorage.getItem('datalab_key');
+            // 從專用欄位或 localStorage 讀取 Datalab Key
+            const datalabKey = document.getElementById('datalab-key').value.trim() || localStorage.getItem('datalab_key');
+            
             if (!datalabKey) {
-                alert("⚠️ 錯誤：快速 OCR 必須使用 Chandra (Datalab) 引擎。\n\n請先到「設定」頁面選擇 'Datalab' 並輸入 API Key，然後再試一次。");
+                alert("⚠️ 錯誤：快速 OCR 必須設定 Chandra / Datalab API Key。\n\n請前往「設定」頁面的「📸 Chandra OCR 設定」區塊輸入 Key。");
                 switchTab('settings');
-                // 自動切換到 Datalab 選項方便使用者
-                document.getElementById('provider-select').value = 'datalab';
-                handleProviderChange(true);
+                document.getElementById('datalab-key').focus();
                 return;
             }
 
@@ -835,7 +863,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             try {
                 let fileData = await readFileAsBase64(file);
                 
-                // 強制使用 Datalab 呼叫
+                // 強制使用 Datalab 呼叫，並傳入專用 Key
                 const res = await callAI(
                     'datalab', 
                     DEFAULT_OCR_PROMPT, 
@@ -845,7 +873,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     file.type, 
                     null,
                     'chandra',
-                    datalabKey
+                    datalabKey 
                 );
                 
                 const safeHTML = DOMPurify.sanitize(marked.parse(res));
@@ -975,6 +1003,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
             let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
             let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
             
+            // 特殊處理：如果是 Datalab (Chandra)，使用其專用 Key
+            if (ocrProvider === 'datalab') {
+                ocrApiKey = document.getElementById('datalab-key').value || localStorage.getItem('datalab_key');
+            }
+
             if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
 
             // 如果使用者選了 Datalab (Chandra)，使用其專屬的 Whole-File OCR
@@ -1142,8 +1175,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else { el.classList.remove('active'); el.innerText = ""; }
         }
 
-        // 已移除 extractTextFromPDF_Accurate 及其輔助函式 (由 AI 全權處理排版)
-
         function initVoiceSystem() {
             const engine = document.getElementById('voice-engine').value;
             if (engine === 'browser') initBrowserSpeech(); 
@@ -1245,8 +1276,14 @@ Directly provide the final, polished Traditional Chinese translation.`;
         function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
         
         function handleProviderChange(save=true) {
-            const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
-            document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+            const p = document.getElementById('provider-select').value; 
+            const c = PROVIDERS[p];
+            
+            // 重要：此處僅處理聊天服務商的 Key，Datalab 已分離
+            if (p !== 'datalab') {
+                document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+            }
+            
             memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
             if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
             
@@ -1281,7 +1318,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let list=[];
                 if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
-                else if(p==='datalab') return; 
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
@@ -1307,11 +1343,18 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const p = document.getElementById('provider-select').value;
             const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
             memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+            
+            // 儲存一般對話 AI 設定
             localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
             localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+            
+            // 儲存 Chandra OCR 設定
+            localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
+            localStorage.setItem('datalab_mode', document.getElementById('datalab-mode').value);
+
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
@@ -1329,6 +1372,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
             localStorage.removeItem('custom_prompt_ocr');
             localStorage.removeItem('custom_prompt_translate');
             document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
+            
+            // 預設模式
+            document.getElementById('datalab-mode').value = 'balanced';
+
             handleProviderChange(true); 
             showTransientStatus("已還原預設值");
         }
@@ -1348,9 +1395,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
-                if (f.type === 'application/pdf') {
-                }
-
                 const isPaused = document.getElementById('pause-send').checked;
                 if (!isPaused) {
                     showTransientStatus("即將自動發送...");
@@ -1383,9 +1427,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let mime = null;
 
                 if(selectedFile) {
-                    // PDF 處理邏輯已變更：直接讀取純文字供 AI 參考，不再進行複雜排版提取
                     if(selectedFile.type === 'application/pdf') {
-                        // 嘗試簡單提取文字
                          const arrayBuffer = await selectedFile.arrayBuffer();
                          const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
                          let pdfText = "";
@@ -1458,8 +1500,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             if(!k) throw new Error("需 API Key");
 
-            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 [修正版] ---
-            // 改用 Marker 接口以取得正確的 Markdown 格式
+            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 ---
             if (p === 'datalab') {
                 if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
                 
@@ -1473,14 +1514,17 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
                 const formData = new FormData();
                 formData.append('file', blob);
-                formData.append('output_format', 'markdown'); // 強制輸出 Markdown
+                formData.append('output_format', 'markdown');
                 
-                // 改為使用 Marker 接口 (Marker 是 Chandra 的文件處理核心)
+                // 取得 Datalab 模式設定 (來自 UI)
+                const datalabMode = document.getElementById('datalab-mode').value || 'balanced';
+                formData.append('mode', datalabMode); 
+                
                 const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
                     headers: { 
                         'X-Api-Key': k,
-                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker' // 修正為 Marker
+                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker'
                     },
                     body: formData,
                     signal: sig
@@ -1503,7 +1547,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                         method: 'GET', 
                         headers: { 
                             'X-Api-Key': k,
-                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}` // 修正為 Marker 查詢
+                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}`
                         },
                         signal: sig
                     });
@@ -1513,8 +1557,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     const checkData = await checkReq.json();
                     
                     if (checkData.status === 'complete') {
-                        // 修正讀取路徑：Marker 接口回傳的 markdown 通常在頂層或 result 內
-                        // 為了保險，我們檢查多個可能的位置
                         const resultMd = checkData.markdown || (checkData.result ? checkData.result.markdown : null) || JSON.stringify(checkData);
                         return resultMd;
                     } else if (checkData.status === 'failed') {
@@ -1524,7 +1566,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             }
             
             // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
-            // 標頭模式轉發
             
             let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
             let bodyObj = {};
@@ -1535,7 +1576,15 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 
                 let bodyContent = { 
                     system_instruction: { parts: [{ text: sysPrompt }] },
-                    contents: [] 
+                    contents: [],
+                    // 【修正】強制加入安全設定，允許所有內容通過
+                    safetySettings: [
+                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+                        { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
+                    ]
                 };
                 history.forEach(msg => {
                     bodyContent.contents.push({
@@ -1578,7 +1627,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
             }
 
-            // --- 核心代理請求 ---
             headers['X-Target-Url'] = url; 
 
             const r = await fetch(USER_WORKER_URL, {
