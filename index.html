@@ -1017,10 +1017,30 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 try {
                     const textContent = await page.getTextContent();
                     textLayerContent = textContent.items.map(item => item.str).join(" ");
-                    // 判斷是否成功獲取到足夠的文字 (例如 > 20 字元才算有效提取)
-                    if (textLayerContent && textLayerContent.trim().length > 20) {
-                        hasExtractedText = true;
+                    
+                    // --- 增強驗證邏輯：清洗與驗證 ---
+                    const totalLen = textLayerContent.length;
+                    
+                    // 條件 1: 長度必須 <= 8000 且 > 20 (避免極短或極長的文字)
+                    if (totalLen > 20 && totalLen <= 8000) {
+                        
+                        // 條件 2: 垃圾字符比例檢查 (Garbage Ratio Check)
+                        // 有效字符定義：中日韓、英文、數字、空白、標準標點符號
+                        const validMatches = textLayerContent.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\w\s.,?!:;"'()\[\]{}+-=%$#@]/g) || [];
+                        const validCount = validMatches.length;
+                        const garbageRatio = 1 - (validCount / totalLen);
+
+                        // 只有當亂碼比例小於 30% 時，才視為有效
+                        if (garbageRatio < 0.3) {
+                             hasExtractedText = true;
+                        } else {
+                             console.warn(`Page ${i}: Garbage ratio too high (${(garbageRatio*100).toFixed(1)}%). Fallback to visual mode.`);
+                        }
+                    } else if (totalLen > 8000) {
+                        console.warn(`Page ${i}: Text too long (${totalLen}). Fallback to visual mode.`);
                     }
+                    // -----------------------------
+
                 } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
 
                 // 2. 取得 Visual Layer (壓縮圖片)
@@ -1045,15 +1065,15 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let userPromptContent = "";
 
                 if (hasExtractedText) {
-                    // 情況 A: 成功獲取字符 -> 使用混合模式 (Hybrid Prompt)
+                    // 情況 A: 成功獲取有效字符 -> 使用混合模式 (Hybrid Prompt)
                     // 將提取的亂碼/文字作為 "Raw Text" 傳入，並附上圖片
                     selectedSystemPrompt = HYBRID_PROMPT;
                     userPromptContent = `[Page ${i} Raw Text Start]\n${textLayerContent.substring(0, 8000)}\n[Page ${i} Raw Text End]\n\nPlease process this page according to the Hybrid rules.`;
                 } else {
-                    // 情況 B: 獲取失敗 (純圖/掃描) -> 使用純視覺模式 (Visual Prompt)
+                    // 情況 B: 獲取失敗 (純圖/掃描/亂碼過多/文字過長) -> 使用純視覺模式 (Visual Prompt)
                     // 僅指示 AI 閱讀圖片
                     selectedSystemPrompt = VISUAL_PROMPT;
-                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer. Please perform strict Visual OCR on the image.`;
+                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer (or text is corrupted). Please perform strict Visual OCR on the image.`;
                 }
 
                 // 如果用戶勾選了翻譯，我們在 User Prompt 尾端再強調一次，雖然 System Prompt 已包含
