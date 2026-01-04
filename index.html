@@ -38,12 +38,11 @@
             } catch (e) {
                 console.error("PDF Init Failed:", e);
                 window.reportError("PDF 核心載入失敗 (CDN)", e);
-                const btn = document.getElementById('pdf-start-btn');
-                if (btn) {
-                    btn.innerText = "⚠️ 錯誤：PDF 核心失敗";
-                    btn.classList.add('danger');
-                    btn.disabled = true;
-                }
+                // 由於按鈕ID已變更，這裡做通用處理
+                const btns = document.querySelectorAll('button');
+                btns.forEach(b => {
+                    if(b.textContent.includes('分析')) b.disabled = true;
+                });
             }
         }
         initPdfSystem();
@@ -197,14 +196,6 @@
         button.high-contrast { background-color: #FFD700; color: #000; border: 2px solid #FFF; font-size: 1.2rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* OCR 結果區專用樣式 */
-        #quick-ocr-output {
-            background: #111; border: 2px solid #444; border-radius: 8px;
-            padding: 15px; min-height: 100px; margin-top: 10px;
-            white-space: pre-wrap; word-break: break-word;
-        }
-        #quick-ocr-output:focus { outline: 3px solid var(--accent-color); background: #222; }
-
         /* 對話氣泡樣式 */
         .message {
             background: #111; padding: 15px; margin-bottom: 20px;
@@ -236,13 +227,12 @@
             width: 18px; height: 18px; margin: 0 8px 0 0;
             accent-color: var(--accent-color); /* 強調色 */
         }
-        /* 勾選時高亮 */
         .chat-check-btn:has(input:checked) {
             border-color: var(--accent-color);
             background: #2a2a00;
         }
 
-        /* 設定頁樣式 */
+        /* 設定頁與工具頁卡片樣式 */
         .settings-card {
             background: #1a1a1a; padding: 15px; border-radius: 8px;
             border: 1px solid #333; margin-bottom: 20px;
@@ -251,8 +241,14 @@
         .check-btn {
             display: flex; align-items: center; background: #222; padding: 10px;
             border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
+            cursor: pointer;
         }
-        .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; }
+        /* 選中時高亮工具頁的 Radio */
+        .check-btn:has(input:checked) {
+            border-color: var(--accent-color);
+            background: #2a2a00;
+        }
+        .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; accent-color: var(--accent-color); }
 
         .hidden { display: none !important; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
@@ -296,68 +292,63 @@
                 <div id="chat-output"></div>
             </div>
 
-            <!-- 輸入控制區 (固定在對話頁底部) -->
+            <!-- 輸入控制區 -->
             <div id="input-area-wrapper">
                 <div class="utility-row">
-                    <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
-                    
-                    <!-- 2. 暫停傳送 Checkbox -->
                     <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
                         <span>暫停發送</span>
                     </label>
-
-                    <!-- 3. 清除按鈕 -->
                     <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()">🗑️ 清除</button>
-                    
-                    <!-- 隱藏的 File Input -->
                     <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
                 </div>
-                
                 <form onsubmit="handleSubmit(event)" class="input-row">
-                    <!-- 已移除語音按鈕 -->
                     <textarea id="user-input" placeholder="輸入訊息..." rows="1" aria-label="輸入訊息區"></textarea>
                     <button type="submit" id="submit-btn" title="發送">傳送</button>
                 </form>
             </div>
         </section>
 
-        <!-- B. 工具視圖 (Tools View) -->
+        <!-- B. 工具視圖 (Tools View - 介面重構) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
             <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
             
-            <!-- 新增：快速 OCR 功能區塊 -->
+            <!-- 模式選擇 -->
             <div class="settings-card" style="border-color: var(--accent-color);">
-                <h3>📸 Chandra OCR</h3>
-                <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
-                
-                <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
-                    📸 拍攝 / 取得文字 (強制使用 Chandra)
-                </button>
-                <p style="font-size:0.9rem; color:#aaa;">* 按 Alt + O 快速啟動。結果將直接顯示於下方。</p>
-                
-                <!-- 結果顯示區，支援焦點導航 -->
-                <div id="quick-ocr-output" role="region" aria-label="文字識別結果" tabindex="-1">
-                    (等待拍攝...)
-                </div>
+                <h3>1. 選擇模式</h3>
+                <fieldset style="border:none; padding:0; margin:0;">
+                    <label class="check-btn" style="margin-bottom:8px;">
+                        <input type="radio" name="reader-mode" value="chandra">
+                        <span style="font-weight:bold;">Chandra OCR (Datalab)</span>
+                    </label>
+                    <label class="check-btn" style="margin-bottom:8px;">
+                        <input type="radio" name="reader-mode" value="hybrid" checked>
+                        <span style="font-weight:bold;">字符讀取 + OCR (混合精準)</span>
+                    </label>
+                    <label class="check-btn" style="margin-bottom:0;">
+                        <input type="radio" name="reader-mode" value="visual">
+                        <span style="font-weight:bold;">只用 OCR (純視覺)</span>
+                    </label>
+                </fieldset>
+                <p style="font-size:0.9rem; color:#aaa; margin-top:10px;">
+                    * 混合精準模式：適合 PDF 文件，同時讀取文字層與進行視覺分析。<br>
+                    * 若上傳圖片，將自動切換為「只用 OCR」。
+                </p>
             </div>
 
+            <!-- 操作區域 -->
             <div class="settings-card">
-                <h3>📄 俗業讀取 (General Reader)</h3>
-                <p style="color:#aaa; font-size:0.9rem;">
-                    2025 新功能：結合「文字層」與「視覺 AI」進行逐頁校對。
-                    即使超過 100 頁也能完整輸出不遺漏。
-                </p>
-                <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
+                <h3>2. 執行操作</h3>
+                <input type="file" id="tool-file-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleToolFileSelect()">
                 
-                <button type="button" id="pdf-start-btn" class="action-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
-                    選擇 PDF 檔案並分析
+                <button type="button" class="action-btn high-contrast" onclick="document.getElementById('tool-file-input').click()">
+                    📸 拍攝 / 選擇檔案並分析
                 </button>
                 
                 <div style="margin-top:10px;">
                     <label class="check-btn">
-                        <input type="checkbox" id="pdf-translate"> <span>OCR 後翻譯成繁體中文</span>
+                        <input type="checkbox" id="tool-translate"> <span>分析後翻譯成繁體中文</span>
                     </label>
                 </div>
             </div>
@@ -408,10 +399,10 @@
                     </div>
                 </div>
 
-                <!-- 新增：Chandra OCR 專屬設定 -->
+                <!-- Chandra OCR 專屬設定 -->
                 <div class="settings-card" style="border-left: 5px solid #ff00ff;">
                     <h3>📸 Chandra OCR 設定 (Datalab)</h3>
-                    <p style="font-size:0.9rem; color:#ccc;">此設定專用於「文字讀取」功能中的快速 OCR。</p>
+                    <p style="font-size:0.9rem; color:#ccc;">此設定專用於「文字讀取」功能中的 Chandra 模式。</p>
                     
                     <label>Datalab API Key:</label>
                     <input type="password" id="datalab-key" placeholder="在此輸入 Chandra / Datalab API Key">
@@ -422,7 +413,6 @@
                         <option value="balanced" selected>平衡 (Balanced)</option>
                         <option value="accurate">高精確度 (Accurate) - 費用較高</option>
                     </select>
-                    <p style="font-size:0.9rem; color:#aaa;">* 「高精確度」模式會強制進行完整分析，適合手寫或複雜排版，但消耗點數較多。</p>
                 </div>
 
                 <div class="settings-card">
@@ -437,7 +427,6 @@
 
                 <div class="settings-card">
                     <h3>⌨️ 操作設定</h3>
-                    <!-- 語音相關設定已移除 -->
                     <label class="check-btn">
                         <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
@@ -491,10 +480,10 @@
         // --- 核心變數：Cloudflare Worker 代理 ---
         const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
 
-        // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
+        // --- 全域變數 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
-        let audioContext = null; // 用於提示音
+        let audioContext = null; 
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -520,8 +509,7 @@
             }
         }
 
-        // --- 核心 2: 原始與新增邏輯 ---
-        
+        // --- 核心 2: 輔助類別 ---
         class UniversalTextNormalizer {
             static getScriptType(char) {
                 if (!char) return 'other';
@@ -571,956 +559,59 @@
         };
 
         window.addEventListener('pdfjs-loaded', () => {
-            const btn = document.getElementById('pdf-start-btn');
-            if (btn) {
-                btn.innerText = "📄 選擇 PDF 檔案並分析";
-                btn.disabled = false;
-            }
             showReadyStatus();
         });
 
+        // --- AI Prompts ---
         const DEFAULT_CHAT_PROMPT = `# Persona
 You are a top-tier AI visual and information assistant dedicated to serving visually impaired individuals. Your core duty is to act as an extension of the user's eyes and brain, providing information that is safe, precise, and easy to receive via Screen Reader software.
 
 # Global Rules
-Regardless of the task, you must strictly adhere to the following three major principles:
+1. **Output Language**: Traditional Chinese (Hong Kong style).
+2. **Accessibility**: Use Markdown headers (\`#\`) and lists. Avoid decorative symbols like \`[ ]\`.
+3. **Content**: Be concise but rich in detail. Put main points first.`;
 
-1. **Language Standards**:
-   - **Sole Output Language**: Traditional Chinese (Hong Kong style vocabulary).
-   - **Translation Requirement**: If the source data is in a foreign language, you must digest and translate it into fluent Chinese. It is **strictly prohibited** to display the original text in the output (unless the user specifically requests a comparison).
-
-2. **Accessibility Format**:
-   - **Markdown Structure**: You must utilize \`#\` (headings) and \`-\` (lists) to establish a clear hierarchy, facilitating navigation by screen readers.
-   - **Symbol Ban**: It is **strictly prohibited** to output \`[ ]\` (square brackets) or \`{ }\` (curly braces) or any decorative symbols that might interfere with the reading rhythm. When citing sources, state them directly in the narrative; do not use notations like \`[1]\`.
-
-3. **Content Style**:
-   - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.`;
-
-        // 【更新】第一專屬指令：混合模式 (文字+圖片)
         const HYBRID_PROMPT = `# SYSTEM ROLE
-You are a specialized "Hybrid OCR & Accessibility Engine" for visually impaired users.
-You will receive two inputs for a single PDF page:
-1. **Raw Text**: Extracted via software (may contain garbled text/mojibake).
+You are a "Hybrid OCR & Accessibility Engine" for visually impaired users.
+Inputs:
+1. **Raw Text**: Extracted via software (may contain errors).
 2. **Page Image**: The visual ground truth.
 
 # MISSION
-Reconstruct the page content into perfect **Markdown** format by cross-referencing the Raw Text and the Page Image.
+Reconstruct the page content into **Markdown** by cross-referencing Text and Image.
 
-# STRICT EXECUTION RULES
-1. **Zero Omission Policy**:
-   - Transcribe EVERY single character visible in the image.
-   - Do NOT summarize. Do NOT skip headers, footers, or sidebars.
-   - If the "Raw Text" is incomplete, rely on the "Page Image" to fill in the gaps.
+# RULES
+1. **Zero Omission**: Transcribe EVERY character. Do NOT summarize.
+2. **Visuals**: Describe charts/photos: \`> 🖼️ [圖片描述]: <Detail>\`
+3. **Format**: Strict Markdown. Translate foreign text to Traditional Chinese (HK).
+4. **Correction**: Use Image to fix garbled Raw Text.`;
 
-2. **Image Description (Accessibility)**:
-   - If the page contains charts, diagrams, or photos, you must insert a description block in the exact location.
-   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
-   - Description must be objective and detailed (colors, positions, text inside image).
-
-3. **Format & Language**:
-   - Use strict Markdown (Headers \`#\`, Lists \`-\`, Tables \`| |\`).
-   - If the content is in a foreign language, translate it to **Traditional Chinese (Hong Kong)** immediately.
-   - If the content is already Chinese, preserve it exactly.
-
-# OUTPUT
-Output ONLY the final Markdown content. No conversational filler (e.g., "Here is the text").`;
-
-        // 【更新】第二專屬指令：純視覺模式 (僅圖片)
         const VISUAL_PROMPT = `# SYSTEM ROLE
-You are a high-precision "Visual OCR Expert" for visually impaired users.
-You will receive a **Page Image**.
+You are a "Visual OCR Expert". You receive a **Page Image**.
 
 # MISSION
-Visually recognize and transcribe all text from the image into **Markdown**, and describe any visual elements.
+Visually transcribe all text into **Markdown** and describe visual elements.
 
-# STRICT EXECUTION RULES
-1. **Verbatim Transcription**:
-   - Transcribe text exactly as seen. Do NOT summarize or paraphrase.
-   - Pay attention to multi-column layouts; read from top-left to bottom-right logically.
-   - Include page numbers and small print.
-
-2. **Visual Description**:
-   - Detect all non-text elements (photos, icons, charts).
-   - Insert a description block at the corresponding position.
-   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
-
-3. **Format & Language**:
-   - Output must be in **Traditional Chinese (Hong Kong)**.
-   - If the original text is English/Other, translate it fluently while preserving the original structure.
-   - Use Markdown tables for any grid data found in the image.
-
-# OUTPUT
-Output ONLY the final Markdown content. Do not output code blocks (\`\`\`markdown) wrapper, just the raw content.`;
+# RULES
+1. **Verbatim**: Transcribe exactly as seen. No summaries.
+2. **Description**: Describe non-text elements: \`> 🖼️ [圖片描述]: <Detail>\`
+3. **Language**: Traditional Chinese (HK). Translate if necessary.`;
         
-        // 為了相容設定介面的 "DEFAULT_OCR_PROMPT"，我們先用 HYBRID 填充，但實際執行會動態切換
         const DEFAULT_OCR_PROMPT = HYBRID_PROMPT;
         
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE
-You are a world-class Translator and Terminologist fluent in all major languages, specializing in "Traditional Chinese (Hong Kong variant)". Your work is defined by three core principles: Faithfulness (信), Expressiveness (達), and Elegance (雅).
+Translator specializing in Traditional Chinese (Hong Kong).
 
 # TASK
-Translate the provided input text into high-quality **Traditional Chinese (Hong Kong)**.
-
-# STRICT GUIDELINES (Must Follow)
-1. **NO Summarization**: Translate every single sentence. Do not omit any details, technical terms, or explanations.
-2. **Localization (Hong Kong Style)**:
-   - Use HK-specific vocabulary (e.g., "Smart phone" -> 智能電話, "Project" -> 專案/項目, "Quality" -> 質素, "Software" -> 軟件).
-   - Avoid Mainland Chinese or Taiwanese idioms unless they are standard in HK professional contexts.
-3. **Formatting**: Preserve the original Markdown structure (headings, bullets, links).
-4. **No Filler**: Do not output "Here is the translation" or explanations. Just output the translation.
-
-# OUTPUT
-Directly provide the final, polished Traditional Chinese translation.`;
+Translate input to HK Traditional Chinese.
+- No summarization.
+- Use HK vocabulary (e.g. 智能電話, 質素).
+- Preserve Markdown.`;
         
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
 
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
-            // datalab 已從主要對話列表中移除，僅保留內部定義供 callAI 使用
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
-            mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
-            openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
-            groq: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "llama-3.3-70b-versatile", canFetch: true, listUrl: "https://api.groq.com/openai/v1/models", models: ["llama-3.3-70b-versatile"] },
-            perplexity: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "sonar-pro", canFetch: false, models: ["sonar-pro"] }
-        };
-
-        let currentActiveModelId = "";
-        let selectedFile = null;
-        let chatHistory = [];
-        let allCurrentModels = [];
-        let specificConfigs = { ocr: null, translate: null };
-        let memoryPrompts = { chat: "", ocr: "", translate: "" };
-        let currentEditingMode = 'chat'; 
-
-        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-        // 保留 playAudioCue 用於操作回饋，但移除語音相關初始化
-        
-        document.addEventListener('keydown', handleGlobalShortcuts);
-
-        function handleGlobalShortcuts(e) {
-            if (!e.altKey || !e.shiftKey) return;
-            const key = e.key.toLowerCase();
-            
-            if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
-
-            const actions = {
-                's': () => switchTab('settings'),
-                'c': { id: 'copy-btn' },
-                't': { id: 'export-txt-btn' },
-                'h': { id: 'export-html-btn' },
-                'u': { id: 'upload-btn' },
-                'n': { id: 'new-chat-btn' },
-                'k': { id: 'submit-btn' },
-                'i': { id: 'user-input', type: 'focus' },
-                '1': () => switchTab('chat'),
-                '2': () => switchTab('tools'),
-                '3': () => switchTab('settings')
-            };
-            if (actions[key]) {
-                e.preventDefault(); 
-                if (typeof actions[key] === 'function') actions[key]();
-                else {
-                    const target = document.getElementById(actions[key].id);
-                    if (target) { if (actions[key].type === 'focus') target.focus(); else target.click(); }
-                }
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
-                    ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral'].forEach(p => localStorage.removeItem(`${p}_prompt`));
-                    localStorage.setItem(PROMPT_VERSION_KEY, 'true');
-                }
-                const savedProvider = localStorage.getItem('provider');
-                const savedTimeout = localStorage.getItem('timeout_setting');
-                if (savedTimeout) document.getElementById('timeout-setting').value = savedTimeout;
-                
-                const orSearch = document.getElementById('openrouter-web-search');
-                if(orSearch) orSearch.checked = (localStorage.getItem('openrouter_web_search') === 'true');
-                
-                const savedEnter = localStorage.getItem('enter_to_send');
-                document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
-
-                // 載入 Chandra OCR 設定
-                const savedDatalabKey = localStorage.getItem('datalab_key');
-                if (savedDatalabKey) document.getElementById('datalab-key').value = savedDatalabKey;
-                const savedDatalabMode = localStorage.getItem('datalab_mode');
-                if (savedDatalabMode) document.getElementById('datalab-mode').value = savedDatalabMode;
-
-                const savedSpecifics = localStorage.getItem('specific_configs');
-                if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
-                updateConfigStatusDisplay();
-
-                memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
-                memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
-
-                if (savedProvider && PROVIDERS[savedProvider]) {
-                    // 如果之前的設定是 datalab (因為舊版有)，強制切回 gemini
-                    if (savedProvider === 'datalab') {
-                        document.getElementById('provider-select').value = 'gemini';
-                        localStorage.setItem('provider', 'gemini');
-                    } else {
-                        document.getElementById('provider-select').value = savedProvider;
-                    }
-                } else {
-                    document.getElementById('provider-select').value = 'gemini'; 
-                }
-                
-                handleProviderChange(false); 
-                initPasteImage();
-                initDragAndDrop();
-                initEnterKey();
-                
-                const pauseToggle = document.getElementById('pause-send');
-                if(pauseToggle) pauseToggle.checked = false;
-
-                const hasKey = document.getElementById('api-key').value.trim().length > 0;
-                if (!hasKey) {
-                    switchTab('settings');
-                    showTransientStatus('請先設定 API Key', 'error');
-                } else {
-                    switchTab('chat');
-                }
-
-            } catch (e) { window.reportError("Init Error", e); }
-        });
-
-        function triggerQuickOCR() {
-            switchTab('tools');
-            document.getElementById('quick-ocr-input').click();
-        }
-
-        async function handleQuickOCRFileSelect() {
-            const input = document.getElementById('quick-ocr-input');
-            const file = input.files[0];
-            if (!file) return;
-            
-            // 從專用欄位或 localStorage 讀取 Datalab Key
-            const datalabKey = document.getElementById('datalab-key').value.trim() || localStorage.getItem('datalab_key');
-            
-            if (!datalabKey) {
-                alert("⚠️ 錯誤：快速 OCR 必須設定 Chandra / Datalab API Key。\n\n請前往「設定」頁面的「📸 Chandra OCR 設定」區塊輸入 Key。");
-                switchTab('settings');
-                document.getElementById('datalab-key').focus();
-                return;
-            }
-
-            const outputDiv = document.getElementById('quick-ocr-output');
-            outputDiv.innerHTML = '<p>正在透過 Chandra OCR 進行分析，請稍候...</p>';
-            outputDiv.focus(); 
-            
-            updateStatusBar("正在識別文字 (Chandra)...", "busy");
-            playAudioCue('start');
-
-            try {
-                let fileData = await readFileAsBase64(file);
-                
-                // 強制使用 Datalab 呼叫，並傳入專用 Key
-                const res = await callAI(
-                    'datalab', 
-                    DEFAULT_OCR_PROMPT, 
-                    [], 
-                    "", 
-                    fileData,
-                    file.type, 
-                    null,
-                    'chandra',
-                    datalabKey 
-                );
-                
-                const safeHTML = DOMPurify.sanitize(marked.parse(res));
-                outputDiv.innerHTML = safeHTML;
-                
-                playAudioCue('success');
-                outputDiv.focus();
-                updateStatusBar("識別完成");
-                
-            } catch (e) {
-                window.reportError("Quick OCR Failed", e);
-                outputDiv.innerHTML = `<p style="color:#ff5555; font-weight:bold;">⚠️ 識別失敗：${e.message}</p>`;
-                outputDiv.focus();
-            }
-            input.value = '';
-        }
-
-        function switchPromptEditor(mode) {
-            const textarea = document.getElementById('system-prompt');
-            memoryPrompts[currentEditingMode] = textarea.value;
-            currentEditingMode = mode;
-            textarea.value = memoryPrompts[mode];
-            document.getElementById('tab-chat').classList.toggle('secondary', mode !== 'chat');
-            document.getElementById('tab-ocr').classList.toggle('secondary', mode !== 'ocr');
-            document.getElementById('tab-translate').classList.toggle('secondary', mode !== 'translate');
-            document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
-        }
-
-        function setSpecificConfig(type) {
-            const provider = document.getElementById('provider-select').value;
-            const model = currentActiveModelId;
-            specificConfigs[type] = { provider, model };
-            localStorage.setItem('specific_configs', JSON.stringify(specificConfigs));
-            const currentKey = document.getElementById('api-key').value;
-            if (currentKey) localStorage.setItem(`${provider}_key`, currentKey.trim());
-            updateConfigStatusDisplay();
-            showTransientStatus(`已設定 ${type} 專用模型`);
-        }
-
-        function clearSpecificConfigs() {
-            specificConfigs = { ocr: null, translate: null };
-            localStorage.removeItem('specific_configs');
-            updateConfigStatusDisplay();
-            showTransientStatus("已重置分工設定");
-        }
-
-        function updateConfigStatusDisplay() {
-            const display = document.getElementById('config-status-display');
-            let html = "";
-            html += specificConfigs.ocr ? `• OCR: ${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}<br>` : "";
-            html += specificConfigs.translate ? `• 翻譯: ${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "";
-            display.innerHTML = html || "目前跟隨主要設定";
-        }
-
-        function playAudioCue(type) {
-            try {
-                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioContext.state === 'suspended') audioContext.resume();
-                
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                const now = audioContext.currentTime;
-                
-                if (type === 'start') { 
-                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); 
-                } else if (type === 'success') { 
-                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); 
-                } else if (type === 'error') { 
-                    oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); 
-                }
-            } catch(e) { console.warn("Audio Cue Failed", e); }
-        }
-
-        function resetConversation() {
-            chatHistory = []; 
-            stickyMemory = { type: null, content: null, mime: null, count: 0 };
-            document.getElementById('chat-output').innerHTML = ""; 
-            document.getElementById('user-input').value = "";
-            selectedFile = null;
-            document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
-            document.getElementById('upload-btn').classList.remove('active');
-            document.getElementById('file-input').value = "";
-            toggleExportButtons(false);
-            showTransientStatus("對話與記憶已清除");
-        }
-
-        function handlePDFToolFileSelect() {
-            const input = document.getElementById('pdf-tool-input');
-            if (input.files.length > 0) {
-                processPDFTool(input.files[0]);
-            }
-            input.value = ""; 
-        }
-        
-        function isCanvasBlank(canvas) {
-            try {
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                const imageData = ctx.getImageData(canvas.width/2 - 25, canvas.height/2 - 25, 50, 50);
-                const data = imageData.data;
-                for(let i = 0; i < data.length; i += 4) {
-                    if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) return false; 
-                }
-                return true;
-            } catch(e) { return false; }
-        }
-
-        async function processPDFTool(file) {
-            if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
-            if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF"); return; }
-            
-            resetConversation(); playAudioCue('start');
-            switchTab('chat');
-            
-            const needTranslate = document.getElementById('pdf-translate').checked;
-
-            try {
-                updateStatusBar("正在初始化混合閱讀模式...", "busy");
-                // 改為全新的混合處理模式
-                await performHybridAIProcessing(file, needTranslate);
-
-            } catch (e) { window.reportError("PDF Process Failed", e); }
-        }
-
-        async function performHybridAIProcessing(file, needTranslate) {
-            const controller = new AbortController(); 
-            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
-            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
-            
-            // 特殊處理：如果是 Datalab (Chandra)，使用其專用 Key
-            if (ocrProvider === 'datalab') {
-                ocrApiKey = document.getElementById('datalab-key').value || localStorage.getItem('datalab_key');
-            }
-
-            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
-
-            // 如果使用者選了 Datalab (Chandra)，使用其專屬的 Whole-File OCR
-            if (ocrProvider === 'datalab') {
-                 updateStatusBar("上傳整份文件至 Chandra OCR...", "busy");
-                 let fileData = await readFileAsBase64(file);
-                 let fullText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
-                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(fullText));
-                 setTimeout(() => aiMsg.focus(), 100);
-                 updateStatusBar("完成");
-                 playAudioCue('success');
-                 return;
-            }
-
-            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式 (Sequential Hybrid Processing)
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
-            
-            updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
-            
-            // 建立一個即時顯示容器，因為我們要串流顯示每一頁
-            const containerDiv = document.createElement('div');
-            containerDiv.className = `message assistant`;
-            containerDiv.innerHTML = `<h1 class="msg-heading">AI 助理 (即時處理中)：</h1><div class="markdown-body" id="streaming-output"></div>`;
-            document.getElementById('chat-output').appendChild(containerDiv);
-            const outputArea = containerDiv.querySelector('#streaming-output');
-            toggleExportButtons(true);
-
-            let fullAccumulatedText = "";
-
-            for (let i = 1; i <= pdf.numPages; i++) {
-                updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
-                document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
-
-                // 1. 取得 Text Layer (文字提示)
-                const page = await pdf.getPage(i);
-                let textLayerContent = "";
-                let hasExtractedText = false;
-                
-                try {
-                    const textContent = await page.getTextContent();
-                    textLayerContent = textContent.items.map(item => item.str).join(" ");
-                    
-                    // --- 增強驗證邏輯：清洗與驗證 ---
-                    const totalLen = textLayerContent.length;
-                    
-                    // 條件 1: 長度必須 <= 8000 且 > 20 (避免極短或極長的文字)
-                    if (totalLen > 20 && totalLen <= 8000) {
-                        
-                        // 條件 2: 垃圾字符比例檢查 (Garbage Ratio Check)
-                        // 有效字符定義：中日韓、英文、數字、空白、標準標點符號
-                        const validMatches = textLayerContent.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\w\s.,?!:;"'()\[\]{}+-=%$#@]/g) || [];
-                        const validCount = validMatches.length;
-                        const garbageRatio = 1 - (validCount / totalLen);
-
-                        // 只有當亂碼比例小於 30% 時，才視為有效
-                        if (garbageRatio < 0.3) {
-                             hasExtractedText = true;
-                        } else {
-                             console.warn(`Page ${i}: Garbage ratio too high (${(garbageRatio*100).toFixed(1)}%). Fallback to visual mode.`);
-                        }
-                    } else if (totalLen > 8000) {
-                        console.warn(`Page ${i}: Text too long (${totalLen}). Fallback to visual mode.`);
-                    }
-                    // -----------------------------
-
-                } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
-
-                // 2. 取得 Visual Layer (壓縮圖片)
-                const viewportRaw = page.getViewport({ scale: 1.0 });
-                // 使用 2.0 倍率以確保文字清晰，但限制最大維度以防 OOM
-                const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
-                let canvas = document.createElement('canvas');
-                canvas.width = page.getViewport({ scale }).width; 
-                canvas.height = page.getViewport({ scale }).height;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
-                
-                if (isCanvasBlank(canvas)) {
-                    canvas.remove();
-                    continue; // 空白頁跳過
-                }
-                
-                // 轉為 JPEG 格式，品質 0.8，平衡清晰度與封包大小
-                let imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-                // 3. 根據提取結果選擇專屬指令 (Branching Logic)
-                let selectedSystemPrompt = "";
-                let userPromptContent = "";
-
-                if (hasExtractedText) {
-                    // 情況 A: 成功獲取有效字符 -> 使用混合模式 (Hybrid Prompt)
-                    // 將提取的亂碼/文字作為 "Raw Text" 傳入，並附上圖片
-                    selectedSystemPrompt = HYBRID_PROMPT;
-                    userPromptContent = `[Page ${i} Raw Text Start]\n${textLayerContent.substring(0, 8000)}\n[Page ${i} Raw Text End]\n\nPlease process this page according to the Hybrid rules.`;
-                } else {
-                    // 情況 B: 獲取失敗 (純圖/掃描/亂碼過多/文字過長) -> 使用純視覺模式 (Visual Prompt)
-                    // 僅指示 AI 閱讀圖片
-                    selectedSystemPrompt = VISUAL_PROMPT;
-                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer (or text is corrupted). Please perform strict Visual OCR on the image.`;
-                }
-
-                // 如果用戶勾選了翻譯，我們在 User Prompt 尾端再強調一次，雖然 System Prompt 已包含
-                if (needTranslate) {
-                    userPromptContent += "\n\nREMINDER: Translate the output into Traditional Chinese (Hong Kong).";
-                }
-
-                try {
-                    // 4. 呼叫 AI
-                    let pageResult = await callAI(
-                        ocrProvider, 
-                        selectedSystemPrompt, 
-                        [], // No history for OCR pages to save context window
-                        userPromptContent, 
-                        imgBase64, 
-                        "image/jpeg", 
-                        controller.signal, 
-                        ocrModel, 
-                        ocrApiKey
-                    );
-                    
-                    // 格式化輸出
-                    let cleanResult = UniversalTextNormalizer.normalize(pageResult);
-                    fullAccumulatedText += `${cleanResult}\n\n`;
-                    
-                    // 追加節點模式 (Append Node)
-                    const pageNode = document.createElement('div');
-                    pageNode.className = 'new-page';
-                    pageNode.style.marginBottom = "20px";
-                    pageNode.style.borderBottom = "1px dashed #444";
-                    pageNode.style.paddingBottom = "20px";
-                    // 加上頁碼標示，方便閱讀
-                    pageNode.innerHTML = `<h3>Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(cleanResult));
-                    outputArea.appendChild(pageNode);
-                    
-                } catch (e) {
-                    console.error(`Page ${i} AI Error:`, e);
-                    const errorNode = document.createElement('div');
-                    errorNode.innerHTML = `<p style="color:red">Page ${i} Error: ${e.message}</p>`;
-                    outputArea.appendChild(errorNode);
-                } finally {
-                    // 5. 記憶體釋放 (Critical for long PDFs)
-                    canvas.remove();
-                    canvas = null;
-                    imgBase64 = null;
-                }
-
-                // 6. 分頁延遲 (Stability Delay)
-                // Gemini 2.5 Flash 雖然快，但為了避免瞬間並發導致瀏覽器卡頓或 API 429，保留短暫緩衝
-                if (ocrProvider === 'gemini') {
-                    await sleep(6000); // 6秒
-                } else {
-                    await sleep(500); // 其他模型 0.5秒
-                }
-            }
-
-            updateVisualProgress(false);
-            updateStatusBar("文件處理完成");
-            playAudioCue('success');
-            containerDiv.focus();
-        }
-
-        function updateVisualProgress(show, text="") {
-            const el = document.getElementById('visual-progress');
-            if (show) { el.classList.add('active'); el.innerText = text; } 
-            else { el.classList.remove('active'); el.innerText = ""; }
-        }
-
-        function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
-        function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
-        function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
-        
-        function updateStatusBar(t, s='ready') { 
-            const b = document.getElementById('status-bar'); 
-            b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
-            b.className = s; 
-            b.innerText = t; 
-        }
-
-        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
-        function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
-        
-        function addMessage(role, content) {
-            const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
-            div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
-            document.getElementById('chat-output').appendChild(div); 
-            toggleExportButtons(true);
-            return div;
-        }
-        function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
-        
-        function handleProviderChange(save=true) {
-            const p = document.getElementById('provider-select').value; 
-            const c = PROVIDERS[p];
-            
-            // 重要：此處僅處理聊天服務商的 Key，Datalab 已分離
-            if (p !== 'datalab') {
-                document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
-            }
-            
-            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
-            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
-            
-            const orSet = document.getElementById('openrouter-settings');
-            if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
-            
-            allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
-            handleModelFilter();
-            currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
-            document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
-            if(save) localStorage.setItem('provider', p);
-            showReadyStatus();
-        }
-        function handleModelFilter() {
-            const f = document.getElementById('model-filter-input').value.toLowerCase();
-            updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
-        }
-        function updateModelSelect(list, active) {
-            const s = document.getElementById('model-select'); s.innerHTML = "";
-            let found = false;
-            list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
-            s.appendChild(new Option("自行輸入...", "CUSTOM"));
-            const w = document.getElementById('custom-model-wrapper');
-            if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
-        }
-        
-        async function fetchOnlineModels() {
-            const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
-            if(!k && p!=='openrouter') return alert("需 API Key");
-            const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
-            try {
-                let list=[];
-                if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
-                else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
-                else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
-                
-                if(list && list.length > 0) { 
-                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
-                    allCurrentModels=list; 
-                    handleModelFilter(); 
-                    showTransientStatus("模型清單已更新並儲存"); 
-                } else {
-                    throw new Error("找不到可用模型");
-                }
-            } catch(e) { window.reportError("更新失敗", e); } 
-            finally { btn.innerText="更新"; btn.disabled=false; }
-        }
-
-        function handleModelSelectChange() {
-            const s = document.getElementById('model-select');
-            if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
-            else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
-        }
-        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); }
-        
-        function saveSettings() {
-            const p = document.getElementById('provider-select').value;
-            const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
-            memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
-            
-            // 儲存一般對話 AI 設定
-            localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
-            localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
-            localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
-            localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
-            localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
-            
-            // 儲存 Chandra OCR 設定
-            localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
-            localStorage.setItem('datalab_mode', document.getElementById('datalab-mode').value);
-
-            localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
-            localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
-            localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            
-            showTransientStatus("設定已儲存");
-            switchTab(lastActiveTabId || 'chat');
-        }
-
-        function restoreDefaults() {
-            const p = document.getElementById('provider-select').value; 
-            memoryPrompts.chat = PROVIDERS[p].prompt;
-            memoryPrompts.ocr = DEFAULT_OCR_PROMPT;
-            memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
-            localStorage.removeItem(`${p}_prompt`);
-            localStorage.removeItem('custom_prompt_ocr');
-            localStorage.removeItem('custom_prompt_translate');
-            document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
-            
-            // 預設模式
-            document.getElementById('datalab-mode').value = 'balanced';
-
-            handleProviderChange(true); 
-            showTransientStatus("已還原預設值");
-        }
-
-        function copyResult() { navigator.clipboard.writeText(document.getElementById('chat-output').innerText).then(()=>showTransientStatus("已複製")); }
-        function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("日誌已複製")); }
-        function exportChat(fmt) {
-            const c = document.getElementById('chat-output');
-            const b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
-        }
-        
-        async function handleFileSelect(f) {
-            f = f || document.getElementById('file-input').files[0];
-            if(f) { 
-                selectedFile = f; 
-                document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
-                document.getElementById('upload-btn').classList.add('active'); 
-                
-                const isPaused = document.getElementById('pause-send').checked;
-                if (!isPaused) {
-                    showTransientStatus("即將自動發送...");
-                    setTimeout(() => {
-                        const event = new Event('submit', { cancelable: true });
-                        document.querySelector('form').dispatchEvent(event); 
-                    }, 700);
-                } else {
-                    showTransientStatus("檔案已加入，請輸入文字後發送"); 
-                    document.getElementById('user-input').focus();
-                }
-            }
-        }
-
-        function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
-        function readFileAsText(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result); rd.onerror=j; rd.readAsText(f);}); }
-
-        async function handleSubmit(e) {
-            e.preventDefault(); 
-            const txt = document.getElementById('user-input').value.trim();
-            if(!txt && !selectedFile) return showTransientStatus("請輸入內容", 'error');
-            
-            playAudioCue('start'); updateStatusBar("處理中...", 'busy');
-            const btn = document.getElementById('submit-btn'); btn.disabled=true;
-            const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
-            
-            try {
-                let input = txt; 
-                let fileData = null; 
-                let mime = null;
-
-                if(selectedFile) {
-                    if(selectedFile.type === 'application/pdf') {
-                         const arrayBuffer = await selectedFile.arrayBuffer();
-                         const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
-                         let pdfText = "";
-                         for (let i = 1; i <= pdf.numPages; i++) {
-                             const content = await pdf.getPage(i).then(p => p.getTextContent());
-                             const str = content.items.map(item => item.str).join(" ");
-                             pdfText += `[Page ${i}]\n${str}\n\n`;
-                         }
-                         
-                        if(pdfText) { 
-                            const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
-                            input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
-                            stickyMemory = { type: 'text', content: cleanPdfText, count: 3 };
-                        }
-                    } 
-                    else if (selectedFile.type.startsWith('image/')) {
-                        fileData = await readFileAsBase64(selectedFile); 
-                        mime = selectedFile.type;
-                        stickyMemory = { type: 'image', content: fileData, mime: mime, count: 3 };
-                    }
-                    else if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md') || selectedFile.name.endsWith('.js') || selectedFile.name.endsWith('.html') || selectedFile.name.endsWith('.css') || selectedFile.name.endsWith('.py')) {
-                         const fileText = await readFileAsText(selectedFile);
-                         input = `[文件內容 (${selectedFile.name})]:\n${fileText}\n\n[用戶提問]:\n${txt}`;
-                         stickyMemory = { type: 'text', content: fileText, count: 3 };
-                    }
-                } 
-                else if (stickyMemory.count > 0 && stickyMemory.content) {
-                    stickyMemory.count--;
-                    if (stickyMemory.type === 'image') {
-                        fileData = stickyMemory.content;
-                        mime = stickyMemory.mime;
-                        showTransientStatus(`圖片追問模式 (剩餘 ${stickyMemory.count} 次)`);
-                    } else if (stickyMemory.type === 'text') {
-                        input = `[文件內容回顧]:\n${stickyMemory.content}\n\n[用戶追問]:\n${txt}`;
-                        showTransientStatus(`文件追問模式 (剩餘 ${stickyMemory.count} 次)`);
-                    }
-                }
-
-                addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[追問模式]"));
-                
-                document.getElementById('user-input').value = ""; 
-                document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
-                document.getElementById('upload-btn').classList.remove('active');
-                selectedFile = null;
-                
-                const res = await callAI(
-                    document.getElementById('provider-select').value, 
-                    document.getElementById('system-prompt').value,
-                    chatHistory, 
-                    input, 
-                    fileData, 
-                    mime, 
-                    ctl.signal
-                );
-
-                const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
-                setTimeout(() => { aiMsg.focus(); }, 100);
-
-                chatHistory.push({role: 'user', content: input}); 
-                chatHistory.push({role: 'assistant', content: res});
-                if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
-
-                playAudioCue('success'); showReadyStatus();
-            } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
-        }
-
-        async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
-            const k = ovKey || document.getElementById('api-key').value; 
-            const m = ovModel || currentActiveModelId;
-            
-            if(!k) throw new Error("需 API Key");
-
-            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 ---
-            if (p === 'datalab') {
-                if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
-                
-                const byteCharacters = atob(file);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], {type: mime || 'application/pdf'});
-
-                const formData = new FormData();
-                formData.append('file', blob);
-                formData.append('output_format', 'markdown');
-                
-                // 取得 Datalab 模式設定 (來自 UI)
-                const datalabMode = document.getElementById('datalab-mode').value || 'balanced';
-                formData.append('mode', datalabMode); 
-                
-                const postReq = await fetch(USER_WORKER_URL, {
-                    method: 'POST',
-                    headers: { 
-                        'X-Api-Key': k,
-                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker'
-                    },
-                    body: formData,
-                    signal: sig
-                });
-                
-                if (!postReq.ok) {
-                    const errText = await postReq.text();
-                    throw new Error(`Datalab Upload Failed: ${errText}`);
-                }
-                
-                const postData = await postReq.json();
-                const requestId = postData.request_id;
-                
-                while (true) {
-                    if (sig && sig.aborted) throw new Error("使用者取消操作");
-                    
-                    await new Promise(r => setTimeout(r, 1000));
-                    
-                    const checkReq = await fetch(USER_WORKER_URL, {
-                        method: 'GET', 
-                        headers: { 
-                            'X-Api-Key': k,
-                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}`
-                        },
-                        signal: sig
-                    });
-                    
-                    if (!checkReq.ok) throw new Error("Datalab Check Failed");
-                    
-                    const checkData = await checkReq.json();
-                    
-                    if (checkData.status === 'complete') {
-                        const resultMd = checkData.markdown || (checkData.result ? checkData.result.markdown : null) || JSON.stringify(checkData);
-                        return resultMd;
-                    } else if (checkData.status === 'failed') {
-                        throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
-                    }
-                }
-            }
-            
-            // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
-            
-            let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
-            let bodyObj = {};
-            
-            if(p === 'gemini') {
-                url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
-                delete headers['Authorization']; 
-                
-                let bodyContent = { 
-                    system_instruction: { parts: [{ text: sysPrompt }] },
-                    contents: [],
-                    // 【修正】強制加入安全設定，允許所有內容通過
-                    safetySettings: [
-                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
-                    ]
-                };
-                history.forEach(msg => {
-                    bodyContent.contents.push({
-                        role: msg.role === 'user' ? 'user' : 'model',
-                        parts: [{ text: msg.content }]
-                    });
-                });
-                let currentParts = [];
-                if (file) {
-                    currentParts.push({ inline_data: { mime_type: mime || "image/jpeg", data: file } });
-                }
-                currentParts.push({ text: txt });
-                bodyContent.contents.push({ role: "user", parts: currentParts });
-                
-                bodyObj = bodyContent;
-            } 
-            else {
-                if (p === 'openrouter') {
-                    url = "https://openrouter.ai/api/v1/chat/completions";
-                    if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
-                } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
-                else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
-                else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
-                else url = "https://api.groq.com/openai/v1/chat/completions";
-
-                let messages = [];
-                messages.push({ role: "system", content: sysPrompt });
-                history.forEach(msg => {
-                    messages.push({ role: msg.role, content: msg.content });
-                });
-                let currentContent = [];
-                if (file) {
-                    currentContent.push({ type: "text", text: txt });
-                    currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
-                } else {
-                    currentContent = txt;
-                }
-                messages.push({ role: "user", content: currentContent });
-
-                bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
-            }
-
-            headers['X-Target-Url'] = url; 
-
-            const r = await fetch(USER_WORKER_URL, {
-                method: 'POST',
-                headers: headers, 
-                body: JSON.stringify(bodyObj), 
-                signal: sig
-            });
-
-            if(!r.ok) throw new Error(await r.text());
-            const d = await r.json();
-            
-            return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
-        }
-    </script>
-</body>
-</html>
+            mistral: { prompt: DEF
