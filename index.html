@@ -311,7 +311,7 @@
             </div>
         </section>
 
-        <!-- B. 工具視圖 (Tools View - 介面重構) -->
+        <!-- B. 工具視圖 (Tools View) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
             <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
             
@@ -371,13 +371,13 @@
                 <div class="settings-card">
                     <h3>🤖 AI 對話模型設定</h3>
                     <div style="background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
-                        ⚠️ 2025 提示：推薦使用 Google Gemini 或 OpenRouter。
+                        ⚠️ 2026 提示：若清單中的模型已過時，請勾選「使用自訂模型 ID」並手動輸入。
                     </div>
                     
                     <label>主要服務商 (對話/分析):</label>
                     <select id="provider-select" onchange="handleProviderChange(true)">
-                        <option value="gemini">Google Gemini (推薦)</option>
-                        <option value="openrouter">OpenRouter (推薦)</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openrouter">OpenRouter</option>
                         <option value="openai">OpenAI (標準)</option>
                         <option value="claude">Anthropic Claude</option>
                         <option value="mistral">Mistral AI</option>
@@ -387,16 +387,24 @@
                     <label>對話 AI API Key:</label>
                     <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
                     
-                    <label>模型過濾:</label>
-                    <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選..." oninput="handleModelFilter()">
-                    
                     <label>選擇模型:</label>
-                    <div style="display:flex; gap:10px;">
-                        <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0;"></select>
-                        <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0;">更新</button>
+                    <!-- 新增：強制手動模型開關 -->
+                    <label class="check-btn" style="margin-bottom:10px; padding:5px;">
+                        <input type="checkbox" id="use-custom-model" onchange="toggleCustomModelInput()"> 
+                        <span>使用自訂模型 ID (Use Custom Model ID)</span>
+                    </label>
+
+                    <div id="dropdown-model-area">
+                        <label>模型清單:</label>
+                        <div style="display:flex; gap:10px;">
+                            <select id="model-select" onchange="saveSettings()" style="margin-bottom:0;"></select>
+                            <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0;" title="重新整理模型清單">🔄</button>
+                        </div>
                     </div>
-                    <div id="custom-model-wrapper" class="hidden" style="margin-top:10px;">
-                        <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+
+                    <div id="custom-model-area" class="hidden" style="margin-top:10px;">
+                        <label>手動輸入模型 ID:</label>
+                        <input type="text" id="custom-model-input" placeholder="例如: gpt-5-preview, gemini-2.0-pro-exp" onchange="saveSettings()">
                     </div>
                 </div>
 
@@ -406,14 +414,7 @@
                     <p style="font-size:0.9rem; color:#ccc;">此設定專用於「文字讀取」功能中的 Chandra 模式。</p>
                     
                     <label>Datalab API Key:</label>
-                    <input type="password" id="datalab-key" placeholder="在此輸入 Chandra / Datalab API Key">
-                    
-                    <label>辨識精確度 (Accuracy):</label>
-                    <select id="datalab-mode">
-                        <option value="fast">快速 (Fast)</option>
-                        <option value="balanced" selected>平衡 (Balanced)</option>
-                        <option value="accurate">高精確度 (Accurate) - 費用較高</option>
-                    </select>
+                    <input type="password" id="datalab-key" placeholder="在此輸入 Chandra / Datalab API Key" onchange="saveSettings()">
                 </div>
 
                 <div class="settings-card">
@@ -429,14 +430,14 @@
                 <div class="settings-card">
                     <h3>⌨️ 操作設定</h3>
                     <label class="check-btn">
-                        <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
+                        <input type="checkbox" id="enter-to-send" checked onchange="saveSettings()"> <span>按 Enter 鍵傳送</span>
                     </label>
                     <label class="check-btn" id="openrouter-settings" class="hidden">
-                        <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
+                        <input type="checkbox" id="openrouter-web-search" onchange="saveSettings()"> <span>啟用聯網搜尋 (OpenRouter)</span>
                     </label>
                     
                     <label>回應逾時 (秒):</label>
-                    <input type="number" id="timeout-setting" value="120">
+                    <input type="number" id="timeout-setting" value="120" onchange="saveSettings()">
                 </div>
 
                 <div class="settings-card">
@@ -446,7 +447,8 @@
                         <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
                         <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
                     </div>
-                    <textarea id="system-prompt" rows="5" placeholder="在此輸入系統指令..."></textarea>
+                    <textarea id="system-prompt" rows="5" placeholder="在此輸入系統指令..." onchange="saveCurrentPrompt()"></textarea>
+                    <div id="prompt-label" style="font-size:0.8rem; color:#888; text-align:right; margin-top:5px;">當前編輯: 一般對話</div>
                 </div>
 
                 <div class="settings-card" style="border-color: #550000;">
@@ -455,7 +457,7 @@
                     <button type="button" class="secondary" onclick="copyErrorLog()">複製日誌</button>
                 </div>
 
-                <button type="button" class="action-btn" onclick="saveSettings()">儲存所有設定</button>
+                <button type="button" class="action-btn" onclick="saveSettings(true)">儲存所有設定</button>
                 <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
             </div>
         </section>
@@ -484,7 +486,7 @@
         // --- 全域變數 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
-        let audioContext = null; 
+        let currentPromptType = 'chat'; // 'chat', 'ocr', 'translate'
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -510,45 +512,6 @@
             }
         }
 
-        // --- 核心 2: 輔助類別 ---
-        class UniversalTextNormalizer {
-            static getScriptType(char) {
-                if (!char) return 'other';
-                const code = char.charCodeAt(0);
-                if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3040 && code <= 0x30FF) || (code >= 0xAC00 && code <= 0xD7AF)) return 'cjk';
-                if ((code >= 0x0E00 && code <= 0x0E7F) || (code >= 0x1780 && code <= 0x17FF)) return 'sea';
-                if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0590 && code <= 0x05FF)) return 'rtl';
-                if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A) || (code >= 0x0030 && code <= 0x0039) || (code >= 0x00C0 && code <= 0x024F)) return 'latin';
-                return 'other';
-            }
-            static normalize(text) {
-                if (!text) return "";
-                let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
-                const lines = res.split("\n");
-                let processed = "";
-                for (let i = 0; i < lines.length; i++) {
-                    let curr = lines[i].trim();
-                    if (curr.length === 0) { processed += "\n\n"; continue; }
-                    if (i < lines.length - 1) {
-                        let next = lines[i + 1].trim();
-                        if (next.length === 0) { processed += curr + "\n"; continue; }
-                        let lastChar = curr.slice(-1);
-                        let nextChar = next.charAt(0);
-                        const typeA = this.getScriptType(lastChar);
-                        const typeB = this.getScriptType(nextChar);
-                        if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) processed += curr; 
-                        else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) processed += curr;
-                        else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) processed += curr + "\n";
-                        else processed += curr + " ";
-                    } else { processed += curr; }
-                }
-                processed = processed.replace(/([\u2e80-\u9fff])\s+([\u2e80-\u9fff])/g, "$1$2");
-                processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
-                processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
-                return processed.replace(/\n{3,}/g, "\n\n").trim();
-            }
-        }
-
         window.reportError = function(msg, errObj) {
             const time = new Date().toLocaleTimeString();
             const errText = errObj ? (errObj.stack || errObj.message || JSON.stringify(errObj)) : "N/A";
@@ -562,94 +525,72 @@
             showReadyStatus();
         });
 
-        // --- AI Prompts ---
-        const DEFAULT_CHAT_PROMPT = `# Persona
-You are a top-tier AI visual and information assistant dedicated to serving visually impaired individuals. Your core duty is to act as an extension of the user's eyes and brain, providing information that is safe, precise, and easy to receive via Screen Reader software.
+        // --- AI Prompts (預設值) ---
+        const DEFAULT_PROMPTS = {
+            chat: `# Persona
+You are a top-tier AI visual and information assistant dedicated to serving visually impaired individuals. Your core duty is to act as an extension of the user's eyes and brain.
 
 # Global Rules
 1. **Output Language**: Traditional Chinese (Hong Kong style).
-2. **Accessibility**: Use Markdown headers (\`#\`) and lists. Avoid decorative symbols like \`[ ]\`.
-3. **Content**: Be concise but rich in detail. Put main points first.`;
-
-        const HYBRID_PROMPT = `# SYSTEM ROLE
-You are a "Hybrid OCR & Accessibility Engine" for visually impaired users.
-Inputs:
-1. **Raw Text**: Extracted via software (may contain errors).
-2. **Page Image**: The visual ground truth.
-
-# MISSION
-Reconstruct the page content into **Markdown** by cross-referencing Text and Image.
-
-# RULES
-1. **Zero Omission**: Transcribe EVERY character. Do NOT summarize.
-2. **Visuals**: Describe charts/photos: \`> 🖼️ [圖片描述]: <Detail>\`
-3. **Format**: Strict Markdown. Translate foreign text to Traditional Chinese (HK).
-4. **Correction**: Use Image to fix garbled Raw Text.`;
-
-        const VISUAL_PROMPT = `# SYSTEM ROLE
-You are a "Visual OCR Expert". You receive a **Page Image**.
-
-# MISSION
-Visually transcribe all text into **Markdown** and describe visual elements.
-
-# RULES
-1. **Verbatim**: Transcribe exactly as seen. No summaries.
-2. **Description**: Describe non-text elements: \`> 🖼️ [圖片描述]: <Detail>\`
-3. **Language**: Traditional Chinese (HK). Translate if necessary.`;
-        
-        const DEFAULT_OCR_PROMPT = HYBRID_PROMPT;
-        
-        const DEFAULT_TRANSLATE_PROMPT = `# ROLE
+2. **Accessibility**: Use Markdown headers (\`#\`) and lists. Avoid decorative symbols.
+3. **Content**: Be concise but rich in detail.`,
+            
+            ocr: `# SYSTEM ROLE
+You are a "Hybrid OCR & Accessibility Engine".
+Inputs: Raw Text + Page Image.
+MISSION: Reconstruct content into Markdown.
+RULES: Zero Omission. Describe visuals. Fix garbled text using image.`,
+            
+            translate: `# ROLE
 Translator specializing in Traditional Chinese (Hong Kong).
-
-# TASK
-Translate input to HK Traditional Chinese.
+TASK: Translate input to HK Traditional Chinese.
 - No summarization.
-- Use HK vocabulary (e.g. 智能電話, 質素).
-- Preserve Markdown.`;
+- Use HK vocabulary (e.g. 智能電話, 質素).`
+        };
         
-        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
+        // 記憶體中的 Prompts 狀態
+        let promptStorage = { ...DEFAULT_PROMPTS };
 
         const PROVIDERS = {
             gemini: { 
                 type: "google",
-                prompt: DEFAULT_CHAT_PROMPT, 
-                defaultModel: "gemini-1.5-flash",
+                prompt: DEFAULT_PROMPTS.chat, 
+                defaultModel: "gemini-2.0-flash-exp",
                 canFetch: true, 
                 listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", 
                 endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:{MODE}?key={KEY}",
-                models: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"] 
+                models: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] 
             },
             openrouter: { 
                 type: "openai",
-                prompt: DEFAULT_CHAT_PROMPT, 
+                prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "google/gemini-2.0-flash-exp:free", 
                 canFetch: true, 
                 listUrl: "https://openrouter.ai/api/v1/models",
                 endpoint: "https://openrouter.ai/api/v1/chat/completions",
-                models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.1-70b-instruct"] 
+                models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] 
             },
             mistral: { 
                 type: "openai", 
-                prompt: DEFAULT_CHAT_PROMPT, 
+                prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "mistral-small-latest", 
                 canFetch: false, 
                 listUrl: "", 
                 endpoint: "https://api.mistral.ai/v1/chat/completions",
-                models: ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "pixtral-12b-2409"] 
+                models: ["mistral-large-latest", "mistral-small-latest", "codestral-latest"] 
             },
             openai: {
                 type: "openai",
-                prompt: DEFAULT_CHAT_PROMPT,
+                prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "gpt-4o",
-                canFetch: false,
+                canFetch: false, 
                 listUrl: "",
                 endpoint: "https://api.openai.com/v1/chat/completions",
-                models: ["gpt-4o", "gpt-4o-mini", "o1-mini", "o1-preview"]
+                models: ["gpt-4o", "gpt-4.5-preview", "gpt-4o-mini", "o1-preview"]
             },
             claude: {
                 type: "anthropic",
-                prompt: DEFAULT_CHAT_PROMPT,
+                prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "claude-3-5-sonnet-latest",
                 canFetch: false,
                 listUrl: "",
@@ -658,7 +599,7 @@ Translate input to HK Traditional Chinese.
             },
             perplexity: {
                 type: "openai",
-                prompt: DEFAULT_CHAT_PROMPT,
+                prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "sonar-pro",
                 canFetch: false,
                 listUrl: "",
@@ -667,7 +608,7 @@ Translate input to HK Traditional Chinese.
             },
             datalab: { 
                 type: "datalab",
-                prompt: DEFAULT_OCR_PROMPT, 
+                prompt: DEFAULT_PROMPTS.ocr, 
                 defaultModel: "chandra", 
                 canFetch: false, 
                 listUrl: "",
@@ -679,8 +620,6 @@ Translate input to HK Traditional Chinese.
         // --- 核心邏輯：代理與 API 呼叫 ---
 
         async function proxyFetch(targetUrl, options, providerType) {
-            // 建構發送給 Worker 的 Request
-            // 策略：使用 Header 傳遞目標 URL，讓 Worker 進行透傳
             const headers = new Headers(options.headers);
             headers.set("X-Target-URL", targetUrl);
             headers.set("X-Provider-Type", providerType); 
@@ -707,88 +646,66 @@ Translate input to HK Traditional Chinese.
             const providerKey = document.getElementById('provider-select').value;
             const config = PROVIDERS[providerKey];
             const apiKey = document.getElementById('api-key').value.trim();
-            const model = document.getElementById('model-select').value;
+            
+            // 決定模型 ID (下拉選單 或 自訂輸入)
+            let model;
+            const useCustom = document.getElementById('use-custom-model').checked;
+            if (useCustom) {
+                model = document.getElementById('custom-model-input').value.trim();
+                if (!model) throw new Error("請輸入自訂模型 ID");
+            } else {
+                model = document.getElementById('model-select').value;
+            }
 
-            // 針對 Datalab 檢查專屬 Key
             if (config.type !== 'datalab' && !apiKey) throw new Error("請輸入 API Key");
 
             let endpoint = config.endpoint;
             let payload = {};
-            let headers = {
-                "Content-Type": "application/json"
-            };
+            let headers = { "Content-Type": "application/json" };
 
             // 1. 根據不同廠商建構 Payload
             if (config.type === 'datalab') {
-                // 【Datalab 專屬邏輯】
-                // 1. 使用 Datalab Key
                 const datalabKey = document.getElementById('datalab-key').value.trim();
                 if (!datalabKey) throw new Error("請輸入 Chandra / Datalab API Key");
                 headers["x-api-key"] = datalabKey;
-                
-                // 2. 移除 Content-Type，讓瀏覽器自動生成 multipart/form-data boundary
-                delete headers["Content-Type"];
+                delete headers["Content-Type"]; // 讓瀏覽器生成 boundary
 
-                // 3. 建立 FormData (配合 Worker 透傳)
                 const formData = new FormData();
-                
-                // 將 Base64 轉回 Blob (因為 Datalab Marker API 需要檔案)
                 if (imageBase64) {
                     try {
                         const res = await fetch(imageBase64);
                         const blob = await res.blob();
                         formData.append("file", blob, "upload_image.jpg");
-                    } catch (e) {
-                        throw new Error("圖片轉換失敗，請重試");
-                    }
+                    } catch (e) { throw new Error("圖片轉換失敗"); }
                 } else {
                     throw new Error("Chandra 模式必須上傳圖片或 PDF");
                 }
-                
-                // Datalab 參數
-                formData.append("langs", "zh,en"); // 預設中英文
+                formData.append("langs", "zh,en");
                 formData.append("force_ocr", "true");
-                formData.append("paginate", "true"); // 分頁處理
-                
-                payload = formData; // 直接將 formData 作為 body
+                formData.append("paginate", "true");
+                payload = formData;
 
             } else if (config.type === 'google') {
-                // Google Gemini 格式
                 endpoint = endpoint.replace('{MODEL}', model).replace('{MODE}', 'generateContent').replace('{KEY}', apiKey);
-                
                 const contents = [];
-                // 轉換歷史訊息
                 messages.forEach(msg => {
                     const role = msg.role === 'user' ? 'user' : 'model';
                     contents.push({ role: role, parts: [{ text: msg.content }] });
                 });
-                
-                // 處理當前輸入與圖片
                 const lastMsg = contents[contents.length - 1];
-                if (systemPrompt) {
-                    payload.system_instruction = { parts: [{ text: systemPrompt }] };
-                }
-                
+                if (systemPrompt) payload.system_instruction = { parts: [{ text: systemPrompt }] };
                 if (imageBase64 && lastMsg.role === 'user') {
                     const base64Clean = imageBase64.split(',')[1];
                     const mimeType = imageBase64.split(';')[0].split(':')[1];
-                    lastMsg.parts.push({
-                        inline_data: { mime_type: mimeType, data: base64Clean }
-                    });
+                    lastMsg.parts.push({ inline_data: { mime_type: mimeType, data: base64Clean } });
                 }
                 payload.contents = contents;
                 headers["x-goog-api-key"] = apiKey;
 
             } else if (config.type === 'anthropic') {
-                // Claude 格式
                 headers["x-api-key"] = apiKey;
                 headers["anthropic-version"] = "2023-06-01";
-
-                const anthropicMessages = messages.map(m => ({
-                    role: m.role,
-                    content: m.content
-                }));
-                
+                const anthropicMessages = messages.map(m => ({ role: m.role, content: m.content }));
                 if (imageBase64) {
                     const lastMsg = anthropicMessages[anthropicMessages.length - 1];
                     if (lastMsg.role === 'user') {
@@ -800,21 +717,13 @@ Translate input to HK Traditional Chinese.
                         ];
                     }
                 }
-
-                payload = {
-                    model: model,
-                    max_tokens: 4096,
-                    system: systemPrompt,
-                    messages: anthropicMessages
-                };
+                payload = { model: model, max_tokens: 4096, system: systemPrompt, messages: anthropicMessages };
 
             } else {
-                // OpenAI / Mistral / Perplexity / OpenRouter 通用格式
+                // OpenAI / Mistral / Perplexity
                 headers["Authorization"] = `Bearer ${apiKey}`;
-                
                 const openAiMessages = [];
                 if (systemPrompt) openAiMessages.push({ role: "system", content: systemPrompt });
-                
                 messages.forEach(m => {
                     let content = m.content;
                     if (imageBase64 && m === messages[messages.length - 1] && m.role === 'user') {
@@ -825,22 +734,14 @@ Translate input to HK Traditional Chinese.
                     }
                     openAiMessages.push({ role: m.role, content: content });
                 });
-
-                payload = {
-                    model: model,
-                    messages: openAiMessages,
-                    stream: false
-                };
-                
+                payload = { model: model, messages: openAiMessages, stream: false };
                 if (providerKey === 'openrouter') {
                     headers["HTTP-Referer"] = window.location.href;
-                    if (document.getElementById('openrouter-web-search').checked) {
-                        payload.plugins = ["web_search"];
-                    }
+                    if (document.getElementById('openrouter-web-search').checked) payload.plugins = ["web_search"];
                 }
             }
 
-            // 2. 發送請求 (透過 Proxy)
+            // 2. 發送請求
             const requestOptions = {
                 method: "POST",
                 headers: headers,
@@ -852,23 +753,266 @@ Translate input to HK Traditional Chinese.
 
             // 3. 解析回應
             if (config.type === 'datalab') {
-                // Datalab Marker API 回傳結構
-                if (data.text) return data.text; // 成功回傳 Markdown
-                if (data.error) throw new Error("Datalab Error: " + data.error);
+                if (data.text) return data.text;
+                if (data.error) throw new Error("Datalab: " + data.error);
             } else if (config.type === 'google') {
-                if (data.candidates && data.candidates[0].content) {
-                    return data.candidates[0].content.parts.map(p => p.text).join('');
-                }
+                if (data.candidates && data.candidates[0].content) return data.candidates[0].content.parts.map(p => p.text).join('');
             } else if (config.type === 'anthropic') {
-                if (data.content && data.content.length > 0) {
-                    return data.content[0].text;
-                }
+                if (data.content && data.content.length > 0) return data.content[0].text;
             } else {
-                if (data.choices && data.choices.length > 0) {
-                    return data.choices[0].message.content;
-                }
+                if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
             }
-            throw new Error("API 回傳格式無法解析: " + JSON.stringify(data));
+            throw new Error("無法解析回應: " + JSON.stringify(data));
+        }
+
+        // --- 核心更新：線上取得模型清單 ---
+        
+        async function fetchOnlineModels() {
+            const key = document.getElementById('provider-select').value;
+            const config = PROVIDERS[key];
+            const apiKey = document.getElementById('api-key').value.trim();
+
+            if (!config.canFetch || !config.listUrl) {
+                alert("此服務商不支援自動更新模型清單，請手動輸入 ID。");
+                return;
+            }
+            if (!apiKey) {
+                alert("請先輸入 API Key 才能取得模型清單。");
+                return;
+            }
+
+            updateStatusBar("正在更新模型清單...", "busy");
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+
+            try {
+                const targetUrl = config.listUrl.replace('{KEY}', apiKey);
+                // 使用 GET 請求透過 Worker 抓取
+                const response = await proxyFetch(targetUrl, {
+                    method: 'GET',
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "x-goog-api-key": apiKey, // 為 Gemini 準備
+                        "HTTP-Referer": window.location.href // 為 OpenRouter 準備
+                    }
+                }, config.type);
+
+                const data = await response.json();
+                let newModels = [];
+
+                if (config.type === 'google' && data.models) {
+                    // Google Gemini 回傳格式: { models: [{name: "models/gemini-pro"}, ...] }
+                    // 我們需要去掉 "models/" 前綴，因為 generateContent API 不一定需要它，且為了與預設清單一致
+                    newModels = data.models.map(m => m.name.replace(/^models\//, ''));
+                } else if (config.type === 'openai' && data.data) {
+                    // OpenRouter / OpenAI 格式: { data: [{id: "google/gemini-..."}, ...] }
+                    newModels = data.data.map(m => m.id);
+                } else {
+                    throw new Error("無法解析模型清單格式");
+                }
+
+                if (newModels.length > 0) {
+                    PROVIDERS[key].models = newModels;
+                    PROVIDERS[key].isCustomList = true; // 標記為自訂清單以便儲存
+                    handleProviderChange(false); // 更新 UI
+                    saveSettings(true); // 【立即儲存設定】
+                    alert(`成功更新！共取得 ${newModels.length} 個模型。`);
+                } else {
+                    alert("未找到任何模型。");
+                }
+
+            } catch (e) {
+                console.error(e);
+                alert("更新失敗: " + e.message);
+            } finally {
+                updateStatusBar("就緒 (Ready)", "ready");
+                btn.disabled = false;
+            }
+        }
+
+        // --- 設定管理系統 (已重寫) ---
+
+        const SETTINGS_KEY = 'blind_assist_settings_v3';
+
+        function saveSettings(showMsg = false) {
+            // 儲存前先將當前編輯的 Prompt 存入記憶體
+            saveCurrentPrompt();
+
+            // 準備自訂模型清單的儲存結構
+            const customLists = {};
+            Object.keys(PROVIDERS).forEach(k => {
+                if (PROVIDERS[k].isCustomList) {
+                    customLists[k] = PROVIDERS[k].models;
+                }
+            });
+
+            const settings = {
+                provider: document.getElementById('provider-select').value,
+                apiKey: document.getElementById('api-key').value,
+                datalabKey: document.getElementById('datalab-key').value,
+                
+                // 模型相關
+                model: document.getElementById('model-select').value,
+                useCustomModel: document.getElementById('use-custom-model').checked,
+                customModelId: document.getElementById('custom-model-input').value,
+                customLists: customLists, // 儲存下載的模型清單
+                
+                // 系統指令 (全部儲存)
+                prompts: promptStorage,
+                
+                // 其他設定
+                enterToSend: document.getElementById('enter-to-send').checked,
+                openRouterSearch: document.getElementById('openrouter-web-search').checked,
+                timeout: document.getElementById('timeout-setting').value
+            };
+
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+            if (showMsg) updateStatusBar("設定已儲存", "ready");
+        }
+
+        function loadSettings() {
+            const raw = localStorage.getItem(SETTINGS_KEY);
+            if (!raw) {
+                // 初次使用，初始化預設值
+                handleProviderChange(false);
+                return;
+            }
+
+            try {
+                const s = JSON.parse(raw);
+                
+                // 還原 Provider
+                if (s.provider) document.getElementById('provider-select').value = s.provider;
+                
+                // 還原 Keys
+                if (s.apiKey) document.getElementById('api-key').value = s.apiKey;
+                if (s.datalabKey) document.getElementById('datalab-key').value = s.datalabKey;
+                
+                // 還原 Prompts
+                if (s.prompts) promptStorage = s.prompts;
+                // 載入當前顯示的 Prompt
+                document.getElementById('system-prompt').value = promptStorage[currentPromptType];
+
+                // 還原下載的模型清單 (關鍵邏輯)
+                if (s.customLists) {
+                    Object.keys(s.customLists).forEach(k => {
+                        if (PROVIDERS[k]) {
+                            PROVIDERS[k].models = s.customLists[k];
+                            PROVIDERS[k].isCustomList = true;
+                        }
+                    });
+                }
+
+                // 還原其他開關
+                if (s.enterToSend !== undefined) document.getElementById('enter-to-send').checked = s.enterToSend;
+                if (s.openRouterSearch !== undefined) document.getElementById('openrouter-web-search').checked = s.openRouterSearch;
+                if (s.timeout) document.getElementById('timeout-setting').value = s.timeout;
+
+                // 還原模型選擇
+                handleProviderChange(false); // 先產生下拉選單
+                
+                if (s.useCustomModel) {
+                    document.getElementById('use-custom-model').checked = true;
+                    document.getElementById('custom-model-input').value = s.customModelId || "";
+                    toggleCustomModelInput();
+                } else if (s.model) {
+                    const select = document.getElementById('model-select');
+                    // 檢查儲存的模型是否在清單中，若不在則加入 (避免選單跑掉)
+                    if (![...select.options].some(o => o.value === s.model)) {
+                        const opt = document.createElement('option');
+                        opt.value = s.model;
+                        opt.textContent = s.model + " (已存)";
+                        select.appendChild(opt);
+                    }
+                    select.value = s.model;
+                }
+
+            } catch (e) {
+                console.error("載入設定失敗", e);
+                localStorage.removeItem(SETTINGS_KEY); // 清除壞檔
+            }
+        }
+
+        function handleProviderChange(fetchModels = true) {
+            const provider = document.getElementById('provider-select').value;
+            const config = PROVIDERS[provider];
+            
+            // 顯示/隱藏 OpenRouter 特有選項
+            const orSettings = document.getElementById('openrouter-settings');
+            if (orSettings) orSettings.className = (provider === 'openrouter' ? 'check-btn' : 'hidden');
+
+            // 重新填入模型下拉選單
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '';
+            config.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                if (m === config.defaultModel) opt.selected = true;
+                modelSelect.appendChild(opt);
+            });
+            
+            // 若切換服務商，更新 System Prompt 顯示
+            // 但如果用戶已經有編輯過，我們通常不覆蓋，除非重置
+            // 這裡保持當前邏輯，只切換模型清單
+        }
+
+        function toggleCustomModelInput() {
+            const checked = document.getElementById('use-custom-model').checked;
+            const dropArea = document.getElementById('dropdown-model-area');
+            const customArea = document.getElementById('custom-model-area');
+            
+            if (checked) {
+                dropArea.classList.add('hidden');
+                customArea.classList.remove('hidden');
+                document.getElementById('custom-model-input').focus();
+            } else {
+                dropArea.classList.remove('hidden');
+                customArea.classList.add('hidden');
+            }
+            saveSettings(); // 即時儲存狀態
+        }
+
+        // --- System Prompt 編輯器切換邏輯 ---
+
+        function saveCurrentPrompt() {
+            const val = document.getElementById('system-prompt').value;
+            promptStorage[currentPromptType] = val;
+        }
+
+        function switchPromptEditor(type) {
+            // 1. 先儲存舊的
+            saveCurrentPrompt();
+            
+            // 2. 切換狀態
+            currentPromptType = type;
+            
+            // 3. 更新 UI 按鈕狀態
+            ['chat', 'ocr', 'translate'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === type) {
+                    btn.classList.remove('secondary');
+                    btn.classList.add('active'); // 可自定義 active 樣式，或用顏色區分
+                    btn.style.border = "2px solid var(--accent-color)";
+                } else {
+                    btn.classList.add('secondary');
+                    btn.style.border = "1px solid #777";
+                }
+            });
+
+            // 4. 載入新的內容
+            document.getElementById('system-prompt').value = promptStorage[type];
+            
+            // 5. 更新標籤文字
+            const labels = { chat: "一般對話", ocr: "OCR 專用", translate: "翻譯專用" };
+            document.getElementById('prompt-label').textContent = `當前編輯: ${labels[type]}`;
+        }
+
+        function restoreDefaults() {
+            if(confirm("確定要恢復所有預設值嗎？這將清除您的 API Key。")) {
+                localStorage.removeItem(SETTINGS_KEY);
+                location.reload();
+            }
         }
 
         // --- 介面互動邏輯 ---
@@ -877,7 +1021,6 @@ Translate input to HK Traditional Chinese.
             const bar = document.getElementById('status-bar');
             bar.textContent = text;
             bar.className = type;
-            // 對於 Screen Reader，若訊息重要可設為 alert
             if (type === 'error') bar.setAttribute('role', 'alert');
             else bar.setAttribute('role', 'status');
         }
@@ -895,33 +1038,29 @@ Translate input to HK Traditional Chinese.
 
             if (!text && !hasFile) return;
 
-            // 顯示使用者訊息
             appendMessage('user', text || "(發送檔案)");
             input.value = '';
             
-            // 處理圖片 (若有)
             let imageBase64 = null;
             if (hasFile) {
                 const file = fileInput.files[0];
                 if (file.type.startsWith('image/')) {
                     imageBase64 = await readFileAsBase64(file);
                 } else if (file.type === 'application/pdf') {
-                    // PDF 處理邏輯較複雜，此處簡化為提示
-                    appendMessage('assistant', "⚠️ 對話模式目前僅支援圖片直接分析。PDF 請至「文字讀取」分頁。");
+                    appendMessage('assistant', "⚠️ 對話模式目前僅支援圖片。PDF 請至「文字讀取」分頁。");
                     return;
                 }
-                fileInput.value = ''; // 重置
+                fileInput.value = ''; 
             }
 
-            // 鎖定介面
             updateStatusBar("思考中...", "busy");
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
 
             try {
-                // 構建歷史 (簡易版：只取當前輸入，實際專案應維護 Context 陣列)
                 const messages = [{ role: "user", content: text }];
-                const sysPrompt = document.getElementById('system-prompt').value || PROVIDERS[document.getElementById('provider-select').value].prompt;
+                // 永遠使用當前 `promptStorage['chat']` 的內容作為對話 Prompt
+                const sysPrompt = promptStorage.chat; 
 
                 const responseText = await callAI(messages, sysPrompt, imageBase64);
                 appendMessage('assistant', responseText);
@@ -939,20 +1078,8 @@ Translate input to HK Traditional Chinese.
             const container = document.getElementById('chat-output');
             const div = document.createElement('div');
             div.className = `message ${role}`;
-            
-            const heading = document.createElement('h1');
-            heading.className = "msg-heading";
-            heading.textContent = role === 'user' ? "你：" : "AI：";
-            
-            const body = document.createElement('div');
-            body.className = "markdown-body";
-            body.innerHTML = DOMPurify.sanitize(marked.parse(text));
-            
-            div.appendChild(heading);
-            div.appendChild(body);
+            div.innerHTML = `<h1 class="msg-heading">${role === 'user' ? "你：" : "AI："}</h1><div class="markdown-body">${DOMPurify.sanitize(marked.parse(text))}</div>`;
             container.appendChild(div);
-            
-            // 滾動到底部
             document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
         }
 
@@ -965,52 +1092,19 @@ Translate input to HK Traditional Chinese.
             });
         }
 
-        // --- 初始化與設定管理 ---
-        
-        function loadSettings() {
-            // 載入 localStorage 設定 (簡化)
-            const savedKey = localStorage.getItem('ai_api_key');
-            if (savedKey) document.getElementById('api-key').value = savedKey;
-            
-            // 觸發一次模型列表更新 (如果是 OpenRouter/Gemini)
-            handleProviderChange(false);
-        }
-
-        function saveSettings() {
-            localStorage.setItem('ai_api_key', document.getElementById('api-key').value);
-            alert("設定已儲存");
-        }
-
-        function handleProviderChange(fetchModels = true) {
-            const provider = document.getElementById('provider-select').value;
-            const config = PROVIDERS[provider];
-            
-            // 更新 UI
-            const modelSelect = document.getElementById('model-select');
-            modelSelect.innerHTML = '';
-            config.models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.textContent = m;
-                if (m === config.defaultModel) opt.selected = true;
-                modelSelect.appendChild(opt);
-            });
-
-            // 更新 System Prompt 預設值
-            document.getElementById('system-prompt').value = config.prompt;
-        }
-
         // --- 啟動 ---
         window.addEventListener('DOMContentLoaded', () => {
             loadSettings();
             
-            // Enter 鍵發送監聽
             document.getElementById('user-input').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) {
                     e.preventDefault();
                     document.getElementById('submit-btn').click();
                 }
             });
+            
+            // 初始化 Prompt 按鈕樣式
+            switchPromptEditor('chat');
         });
 
     </script>
