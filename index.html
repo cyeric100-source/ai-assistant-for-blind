@@ -574,8 +574,8 @@ TASK: Translate input to HK Traditional Chinese.
                 type: "openai", 
                 prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "mistral-small-latest", 
-                canFetch: false, 
-                listUrl: "", 
+                canFetch: true, 
+                listUrl: "https://api.mistral.ai/v1/models", 
                 endpoint: "https://api.mistral.ai/v1/chat/completions",
                 models: ["mistral-large-latest", "mistral-small-latest", "codestral-latest"] 
             },
@@ -583,8 +583,8 @@ TASK: Translate input to HK Traditional Chinese.
                 type: "openai",
                 prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "gpt-4o",
-                canFetch: false, 
-                listUrl: "",
+                canFetch: true, 
+                listUrl: "https://api.openai.com/v1/models",
                 endpoint: "https://api.openai.com/v1/chat/completions",
                 models: ["gpt-4o", "gpt-4.5-preview", "gpt-4o-mini", "o1-preview"]
             },
@@ -592,7 +592,7 @@ TASK: Translate input to HK Traditional Chinese.
                 type: "anthropic",
                 prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "claude-3-5-sonnet-latest",
-                canFetch: false,
+                canFetch: false, 
                 listUrl: "",
                 endpoint: "https://api.anthropic.com/v1/messages",
                 models: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
@@ -601,8 +601,8 @@ TASK: Translate input to HK Traditional Chinese.
                 type: "openai",
                 prompt: DEFAULT_PROMPTS.chat, 
                 defaultModel: "sonar-pro",
-                canFetch: false,
-                listUrl: "",
+                canFetch: true, 
+                listUrl: "https://api.perplexity.ai/models",
                 endpoint: "https://api.perplexity.ai/chat/completions",
                 models: ["sonar-pro", "sonar", "sonar-reasoning-pro"]
             },
@@ -772,7 +772,7 @@ TASK: Translate input to HK Traditional Chinese.
             const config = PROVIDERS[key];
             const apiKey = document.getElementById('api-key').value.trim();
 
-            if (!config.canFetch || !config.listUrl) {
+            if (!config.canFetch) {
                 alert("此服務商不支援自動更新模型清單，請手動輸入 ID。");
                 return;
             }
@@ -786,26 +786,36 @@ TASK: Translate input to HK Traditional Chinese.
             btn.disabled = true;
 
             try {
-                const targetUrl = config.listUrl.replace('{KEY}', apiKey);
-                // 使用 GET 請求透過 Worker 抓取
+                // 建構目標 URL 和 Headers
+                let targetUrl = config.listUrl;
+                let headers = {
+                    "HTTP-Referer": window.location.href // 為 OpenRouter 準備
+                };
+
+                // Google: Key 在 URL
+                if (config.type === 'google') {
+                    targetUrl = targetUrl.replace('{KEY}', apiKey);
+                    headers["x-goog-api-key"] = apiKey;
+                } 
+                // OpenAI / Mistral / Perplexity / OpenRouter: Key 在 Header
+                else {
+                    headers["Authorization"] = `Bearer ${apiKey}`;
+                }
+
+                // 透過 Worker 發送 GET 請求
                 const response = await proxyFetch(targetUrl, {
                     method: 'GET',
-                    headers: {
-                        "Authorization": `Bearer ${apiKey}`,
-                        "x-goog-api-key": apiKey, // 為 Gemini 準備
-                        "HTTP-Referer": window.location.href // 為 OpenRouter 準備
-                    }
+                    headers: headers
                 }, config.type);
 
                 const data = await response.json();
                 let newModels = [];
 
                 if (config.type === 'google' && data.models) {
-                    // Google Gemini 回傳格式: { models: [{name: "models/gemini-pro"}, ...] }
-                    // 我們需要去掉 "models/" 前綴，因為 generateContent API 不一定需要它，且為了與預設清單一致
+                    // Google 格式: { models: [{name: "models/gemini-pro"}, ...] }
                     newModels = data.models.map(m => m.name.replace(/^models\//, ''));
-                } else if (config.type === 'openai' && data.data) {
-                    // OpenRouter / OpenAI 格式: { data: [{id: "google/gemini-..."}, ...] }
+                } else if (data.data) {
+                    // OpenAI 通用格式 (包含 OpenRouter, Mistral, Perplexity): { data: [{id: "model-id"}, ...] }
                     newModels = data.data.map(m => m.id);
                 } else {
                     throw new Error("無法解析模型清單格式");
