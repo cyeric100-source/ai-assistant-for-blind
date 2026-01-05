@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 視障助理 - 文字讀取專家</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
@@ -11,34 +11,35 @@
     <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
-    <!-- 【核心設定】PDF.js v4.0.379 (使用穩定版本) -->
+    <!-- 【核心設定】PDF.js v5 (本地版本) -->
     <script type="module">
         if (window.location.protocol === 'file:') {
             document.documentElement.innerHTML = `
                 <body style="background:#000; color:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; margin:0; font-family:sans-serif;">
                     <h1 style="color:yellow; font-size:2.5rem; text-align:center;">⚠️ 環境錯誤</h1>
                     <p style="font-size:1.5rem; text-align:center; max-width:800px; line-height:1.6;">
-                        請將此專案上傳至 <strong>GitHub</strong> 並透過 GitHub Pages 開啟。
+                        請將此專案上傳至 <strong>GitHub</strong> 並透過 GitHub Pages 開啟。<br>
+                        (本地執行無法載入 ES Module Worker)
                     </p>
                 </body>
             `;
             throw new Error("Local execution blocked.");
         }
 
-        const PDF_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
-        const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
-
         async function initPdfSystem() {
             try {
-                const pdfjsLib = await import(PDF_BASE);
+                // 使用本地資料夾 ./pdf-dist 中的模組
+                const pdfjsLib = await import('./pdf-dist/pdf.mjs');
                 window.pdfjsLib = pdfjsLib;
-                pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
-                console.log("PDF System Initialized");
+                
+                // 設定 Worker 路徑
+                pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-dist/pdf.worker.mjs';
+                
+                console.log("PDF System Initialized (Local v5)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗 (CDN)", e);
-                // 由於按鈕ID已變更，這裡做通用處理
+                window.reportError("PDF 核心載入失敗 (請檢查 ./pdf-dist 資料夾)", e);
                 const btns = document.querySelectorAll('button');
                 btns.forEach(b => {
                     if(b.textContent.includes('分析')) b.disabled = true;
@@ -377,10 +378,10 @@
                     <select id="provider-select" onchange="handleProviderChange(true)">
                         <option value="gemini">Google Gemini (推薦)</option>
                         <option value="openrouter">OpenRouter (推薦)</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="groq">Groq</option>
+                        <option value="openai">OpenAI (標準)</option>
+                        <option value="claude">Anthropic Claude</option>
                         <option value="mistral">Mistral AI</option>
-                        <option value="perplexity">Perplexity</option>
+                        <option value="perplexity">Perplexity AI</option>
                     </select>
 
                     <label>對話 AI API Key:</label>
@@ -555,7 +556,6 @@
             if (logArea) logArea.value += `[${time}] ${msg}\n${errText}\n----------------\n`;
             console.error(msg, errObj);
             updateStatusBar(`錯誤: ${msg}`, 'error');
-            playAudioCue('error');
         };
 
         window.addEventListener('pdfjs-loaded', () => {
@@ -611,7 +611,408 @@ Translate input to HK Traditional Chinese.
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
 
         const PROVIDERS = {
-            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
-            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
-            datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
-            mistral: { prompt: DEF
+            gemini: { 
+                type: "google",
+                prompt: DEFAULT_CHAT_PROMPT, 
+                defaultModel: "gemini-1.5-flash",
+                canFetch: true, 
+                listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", 
+                endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:{MODE}?key={KEY}",
+                models: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"] 
+            },
+            openrouter: { 
+                type: "openai",
+                prompt: DEFAULT_CHAT_PROMPT, 
+                defaultModel: "google/gemini-2.0-flash-exp:free", 
+                canFetch: true, 
+                listUrl: "https://openrouter.ai/api/v1/models",
+                endpoint: "https://openrouter.ai/api/v1/chat/completions",
+                models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.1-70b-instruct"] 
+            },
+            mistral: { 
+                type: "openai", 
+                prompt: DEFAULT_CHAT_PROMPT, 
+                defaultModel: "mistral-small-latest", 
+                canFetch: false, 
+                listUrl: "", 
+                endpoint: "https://api.mistral.ai/v1/chat/completions",
+                models: ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "pixtral-12b-2409"] 
+            },
+            openai: {
+                type: "openai",
+                prompt: DEFAULT_CHAT_PROMPT,
+                defaultModel: "gpt-4o",
+                canFetch: false,
+                listUrl: "",
+                endpoint: "https://api.openai.com/v1/chat/completions",
+                models: ["gpt-4o", "gpt-4o-mini", "o1-mini", "o1-preview"]
+            },
+            claude: {
+                type: "anthropic",
+                prompt: DEFAULT_CHAT_PROMPT,
+                defaultModel: "claude-3-5-sonnet-latest",
+                canFetch: false,
+                listUrl: "",
+                endpoint: "https://api.anthropic.com/v1/messages",
+                models: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+            },
+            perplexity: {
+                type: "openai",
+                prompt: DEFAULT_CHAT_PROMPT,
+                defaultModel: "sonar-pro",
+                canFetch: false,
+                listUrl: "",
+                endpoint: "https://api.perplexity.ai/chat/completions",
+                models: ["sonar-pro", "sonar", "sonar-reasoning-pro"]
+            },
+            datalab: { 
+                type: "datalab",
+                prompt: DEFAULT_OCR_PROMPT, 
+                defaultModel: "chandra", 
+                canFetch: false, 
+                listUrl: "",
+                endpoint: "https://api.datalab.to/v1/marker",
+                models: ["chandra"] 
+            }
+        };
+
+        // --- 核心邏輯：代理與 API 呼叫 ---
+
+        async function proxyFetch(targetUrl, options, providerType) {
+            // 建構發送給 Worker 的 Request
+            // 策略：使用 Header 傳遞目標 URL，讓 Worker 進行透傳
+            const headers = new Headers(options.headers);
+            headers.set("X-Target-URL", targetUrl);
+            headers.set("X-Provider-Type", providerType); 
+
+            try {
+                const response = await fetch(USER_WORKER_URL, {
+                    method: options.method || 'POST',
+                    headers: headers,
+                    body: options.body
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Proxy Error (${response.status}): ${errText}`);
+                }
+                return response;
+            } catch (e) {
+                console.error("Proxy Fetch Failed:", e);
+                throw e;
+            }
+        }
+
+        async function callAI(messages, systemPrompt, imageBase64 = null) {
+            const providerKey = document.getElementById('provider-select').value;
+            const config = PROVIDERS[providerKey];
+            const apiKey = document.getElementById('api-key').value.trim();
+            const model = document.getElementById('model-select').value;
+
+            // 針對 Datalab 檢查專屬 Key
+            if (config.type !== 'datalab' && !apiKey) throw new Error("請輸入 API Key");
+
+            let endpoint = config.endpoint;
+            let payload = {};
+            let headers = {
+                "Content-Type": "application/json"
+            };
+
+            // 1. 根據不同廠商建構 Payload
+            if (config.type === 'datalab') {
+                // 【Datalab 專屬邏輯】
+                // 1. 使用 Datalab Key
+                const datalabKey = document.getElementById('datalab-key').value.trim();
+                if (!datalabKey) throw new Error("請輸入 Chandra / Datalab API Key");
+                headers["x-api-key"] = datalabKey;
+                
+                // 2. 移除 Content-Type，讓瀏覽器自動生成 multipart/form-data boundary
+                delete headers["Content-Type"];
+
+                // 3. 建立 FormData (配合 Worker 透傳)
+                const formData = new FormData();
+                
+                // 將 Base64 轉回 Blob (因為 Datalab Marker API 需要檔案)
+                if (imageBase64) {
+                    try {
+                        const res = await fetch(imageBase64);
+                        const blob = await res.blob();
+                        formData.append("file", blob, "upload_image.jpg");
+                    } catch (e) {
+                        throw new Error("圖片轉換失敗，請重試");
+                    }
+                } else {
+                    throw new Error("Chandra 模式必須上傳圖片或 PDF");
+                }
+                
+                // Datalab 參數
+                formData.append("langs", "zh,en"); // 預設中英文
+                formData.append("force_ocr", "true");
+                formData.append("paginate", "true"); // 分頁處理
+                
+                payload = formData; // 直接將 formData 作為 body
+
+            } else if (config.type === 'google') {
+                // Google Gemini 格式
+                endpoint = endpoint.replace('{MODEL}', model).replace('{MODE}', 'generateContent').replace('{KEY}', apiKey);
+                
+                const contents = [];
+                // 轉換歷史訊息
+                messages.forEach(msg => {
+                    const role = msg.role === 'user' ? 'user' : 'model';
+                    contents.push({ role: role, parts: [{ text: msg.content }] });
+                });
+                
+                // 處理當前輸入與圖片
+                const lastMsg = contents[contents.length - 1];
+                if (systemPrompt) {
+                    payload.system_instruction = { parts: [{ text: systemPrompt }] };
+                }
+                
+                if (imageBase64 && lastMsg.role === 'user') {
+                    const base64Clean = imageBase64.split(',')[1];
+                    const mimeType = imageBase64.split(';')[0].split(':')[1];
+                    lastMsg.parts.push({
+                        inline_data: { mime_type: mimeType, data: base64Clean }
+                    });
+                }
+                payload.contents = contents;
+                headers["x-goog-api-key"] = apiKey;
+
+            } else if (config.type === 'anthropic') {
+                // Claude 格式
+                headers["x-api-key"] = apiKey;
+                headers["anthropic-version"] = "2023-06-01";
+
+                const anthropicMessages = messages.map(m => ({
+                    role: m.role,
+                    content: m.content
+                }));
+                
+                if (imageBase64) {
+                    const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+                    if (lastMsg.role === 'user') {
+                        const base64Clean = imageBase64.split(',')[1];
+                        const mimeType = imageBase64.split(';')[0].split(':')[1];
+                        lastMsg.content = [
+                            { type: "image", source: { type: "base64", media_type: mimeType, data: base64Clean } },
+                            { type: "text", text: typeof lastMsg.content === 'string' ? lastMsg.content : "" }
+                        ];
+                    }
+                }
+
+                payload = {
+                    model: model,
+                    max_tokens: 4096,
+                    system: systemPrompt,
+                    messages: anthropicMessages
+                };
+
+            } else {
+                // OpenAI / Mistral / Perplexity / OpenRouter 通用格式
+                headers["Authorization"] = `Bearer ${apiKey}`;
+                
+                const openAiMessages = [];
+                if (systemPrompt) openAiMessages.push({ role: "system", content: systemPrompt });
+                
+                messages.forEach(m => {
+                    let content = m.content;
+                    if (imageBase64 && m === messages[messages.length - 1] && m.role === 'user') {
+                        content = [
+                            { type: "text", text: m.content },
+                            { type: "image_url", image_url: { url: imageBase64 } }
+                        ];
+                    }
+                    openAiMessages.push({ role: m.role, content: content });
+                });
+
+                payload = {
+                    model: model,
+                    messages: openAiMessages,
+                    stream: false
+                };
+                
+                if (providerKey === 'openrouter') {
+                    headers["HTTP-Referer"] = window.location.href;
+                    if (document.getElementById('openrouter-web-search').checked) {
+                        payload.plugins = ["web_search"];
+                    }
+                }
+            }
+
+            // 2. 發送請求 (透過 Proxy)
+            const requestOptions = {
+                method: "POST",
+                headers: headers,
+                body: config.type === 'datalab' ? payload : JSON.stringify(payload)
+            };
+
+            const response = await proxyFetch(endpoint, requestOptions, config.type);
+            const data = await response.json();
+
+            // 3. 解析回應
+            if (config.type === 'datalab') {
+                // Datalab Marker API 回傳結構
+                if (data.text) return data.text; // 成功回傳 Markdown
+                if (data.error) throw new Error("Datalab Error: " + data.error);
+            } else if (config.type === 'google') {
+                if (data.candidates && data.candidates[0].content) {
+                    return data.candidates[0].content.parts.map(p => p.text).join('');
+                }
+            } else if (config.type === 'anthropic') {
+                if (data.content && data.content.length > 0) {
+                    return data.content[0].text;
+                }
+            } else {
+                if (data.choices && data.choices.length > 0) {
+                    return data.choices[0].message.content;
+                }
+            }
+            throw new Error("API 回傳格式無法解析: " + JSON.stringify(data));
+        }
+
+        // --- 介面互動邏輯 ---
+
+        function updateStatusBar(text, type = 'ready') {
+            const bar = document.getElementById('status-bar');
+            bar.textContent = text;
+            bar.className = type;
+            // 對於 Screen Reader，若訊息重要可設為 alert
+            if (type === 'error') bar.setAttribute('role', 'alert');
+            else bar.setAttribute('role', 'status');
+        }
+
+        function showReadyStatus() {
+            updateStatusBar("就緒 (Ready)", "ready");
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            const fileInput = document.getElementById('file-input');
+            const hasFile = fileInput.files.length > 0;
+
+            if (!text && !hasFile) return;
+
+            // 顯示使用者訊息
+            appendMessage('user', text || "(發送檔案)");
+            input.value = '';
+            
+            // 處理圖片 (若有)
+            let imageBase64 = null;
+            if (hasFile) {
+                const file = fileInput.files[0];
+                if (file.type.startsWith('image/')) {
+                    imageBase64 = await readFileAsBase64(file);
+                } else if (file.type === 'application/pdf') {
+                    // PDF 處理邏輯較複雜，此處簡化為提示
+                    appendMessage('assistant', "⚠️ 對話模式目前僅支援圖片直接分析。PDF 請至「文字讀取」分頁。");
+                    return;
+                }
+                fileInput.value = ''; // 重置
+            }
+
+            // 鎖定介面
+            updateStatusBar("思考中...", "busy");
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+
+            try {
+                // 構建歷史 (簡易版：只取當前輸入，實際專案應維護 Context 陣列)
+                const messages = [{ role: "user", content: text }];
+                const sysPrompt = document.getElementById('system-prompt').value || PROVIDERS[document.getElementById('provider-select').value].prompt;
+
+                const responseText = await callAI(messages, sysPrompt, imageBase64);
+                appendMessage('assistant', responseText);
+                updateStatusBar("完成", "ready");
+            } catch (err) {
+                reportError("對話失敗", err);
+                appendMessage('assistant', `❌ 錯誤: ${err.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('chat-output');
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            
+            const heading = document.createElement('h1');
+            heading.className = "msg-heading";
+            heading.textContent = role === 'user' ? "你：" : "AI：";
+            
+            const body = document.createElement('div');
+            body.className = "markdown-body";
+            body.innerHTML = DOMPurify.sanitize(marked.parse(text));
+            
+            div.appendChild(heading);
+            div.appendChild(body);
+            container.appendChild(div);
+            
+            // 滾動到底部
+            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // --- 初始化與設定管理 ---
+        
+        function loadSettings() {
+            // 載入 localStorage 設定 (簡化)
+            const savedKey = localStorage.getItem('ai_api_key');
+            if (savedKey) document.getElementById('api-key').value = savedKey;
+            
+            // 觸發一次模型列表更新 (如果是 OpenRouter/Gemini)
+            handleProviderChange(false);
+        }
+
+        function saveSettings() {
+            localStorage.setItem('ai_api_key', document.getElementById('api-key').value);
+            alert("設定已儲存");
+        }
+
+        function handleProviderChange(fetchModels = true) {
+            const provider = document.getElementById('provider-select').value;
+            const config = PROVIDERS[provider];
+            
+            // 更新 UI
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '';
+            config.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                if (m === config.defaultModel) opt.selected = true;
+                modelSelect.appendChild(opt);
+            });
+
+            // 更新 System Prompt 預設值
+            document.getElementById('system-prompt').value = config.prompt;
+        }
+
+        // --- 啟動 ---
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            
+            // Enter 鍵發送監聽
+            document.getElementById('user-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) {
+                    e.preventDefault();
+                    document.getElementById('submit-btn').click();
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>
