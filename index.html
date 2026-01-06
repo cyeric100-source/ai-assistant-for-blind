@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI 視障助理 - 文字讀取專家</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
@@ -11,39 +11,39 @@
     <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
-    <!-- 【核心設定】PDF.js v5 (本地版本) -->
+    <!-- 【核心設定】PDF.js v4.0.379 (使用穩定版本) -->
     <script type="module">
         if (window.location.protocol === 'file:') {
             document.documentElement.innerHTML = `
                 <body style="background:#000; color:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; margin:0; font-family:sans-serif;">
                     <h1 style="color:yellow; font-size:2.5rem; text-align:center;">⚠️ 環境錯誤</h1>
                     <p style="font-size:1.5rem; text-align:center; max-width:800px; line-height:1.6;">
-                        請將此專案上傳至 <strong>GitHub</strong> 並透過 GitHub Pages 開啟。<br>
-                        (本地執行無法載入 ES Module Worker)
+                        請將此專案上傳至 <strong>GitHub</strong> 並透過 GitHub Pages 開啟。
                     </p>
                 </body>
             `;
             throw new Error("Local execution blocked.");
         }
 
+        const PDF_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
+        const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+
         async function initPdfSystem() {
             try {
-                // 使用本地資料夾 ./pdf-dist 中的模組
-                const pdfjsLib = await import('./pdf-dist/pdf.mjs');
+                const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
-                
-                // 設定 Worker 路徑
-                pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-dist/pdf.worker.mjs';
-                
-                console.log("PDF System Initialized (Local v5)");
+                pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+                console.log("PDF System Initialized");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗 (請檢查 ./pdf-dist 資料夾)", e);
-                const btns = document.querySelectorAll('button');
-                btns.forEach(b => {
-                    if(b.textContent.includes('分析')) b.disabled = true;
-                });
+                window.reportError("PDF 核心載入失敗 (CDN)", e);
+                const btn = document.getElementById('pdf-start-btn');
+                if (btn) {
+                    btn.innerText = "⚠️ 錯誤：PDF 核心失敗";
+                    btn.classList.add('danger');
+                    btn.disabled = true;
+                }
             }
         }
         initPdfSystem();
@@ -97,6 +97,7 @@
         #status-bar.ready { background: #004400; }
         #status-bar.busy { background: #664400; }
         #status-bar.error { background: #660000; }
+        #status-bar.recording { background: #aa0000; animation: pulse 1s infinite; }
         
         #visual-progress {
             background: #333; color: #88ccff; font-size: 0.85rem; 
@@ -197,6 +198,14 @@
         button.high-contrast { background-color: #FFD700; color: #000; border: 2px solid #FFF; font-size: 1.2rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        /* OCR 結果區專用樣式 */
+        #quick-ocr-output {
+            background: #111; border: 2px solid #444; border-radius: 8px;
+            padding: 15px; min-height: 100px; margin-top: 10px;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        #quick-ocr-output:focus { outline: 3px solid var(--accent-color); background: #222; }
+
         /* 對話氣泡樣式 */
         .message {
             background: #111; padding: 15px; margin-bottom: 20px;
@@ -210,7 +219,14 @@
         /* 輸入區樣式 */
         .input-row { display: flex; gap: 8px; align-items: flex-end; }
         #user-input { min-height: 60px; max-height: 150px; margin-bottom: 0; resize: none; }
-        #submit-btn { width: 90px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
+        #voice-btn { 
+            width: 60px; height: 60px; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; padding: 0; margin: 0;
+            flex-shrink: 0;
+        }
+        #voice-btn.recording { background-color: #ff3333 !important; animation: pulse 1s infinite; }
+        #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
         /* Utility Row & Checkbox */
         .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
@@ -228,12 +244,13 @@
             width: 18px; height: 18px; margin: 0 8px 0 0;
             accent-color: var(--accent-color); /* 強調色 */
         }
+        /* 勾選時高亮 */
         .chat-check-btn:has(input:checked) {
             border-color: var(--accent-color);
             background: #2a2a00;
         }
 
-        /* 設定頁與工具頁卡片樣式 */
+        /* 設定頁樣式 */
         .settings-card {
             background: #1a1a1a; padding: 15px; border-radius: 8px;
             border: 1px solid #333; margin-bottom: 20px;
@@ -242,18 +259,14 @@
         .check-btn {
             display: flex; align-items: center; background: #222; padding: 10px;
             border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
-            cursor: pointer;
         }
-        /* 選中時高亮工具頁的 Radio */
-        .check-btn:has(input:checked) {
-            border-color: var(--accent-color);
-            background: #2a2a00;
-        }
-        .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; accent-color: var(--accent-color); }
+        .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; }
 
         .hidden { display: none !important; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
         
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
         /* 電腦版適配：側邊欄 */
         @media (min-width: 768px) {
             body {
@@ -288,23 +301,32 @@
             <div id="chat-container">
                 <div class="message assistant">
                     <h1 class="msg-heading">AI 助理：</h1>
-                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字或上傳圖片/PDF進行對話。</div>
+                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF，或使用語音進行對話。</div>
                 </div>
                 <div id="chat-output"></div>
             </div>
 
-            <!-- 輸入控制區 -->
+            <!-- 輸入控制區 (固定在對話頁底部) -->
             <div id="input-area-wrapper">
                 <div class="utility-row">
+                    <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
+                    
+                    <!-- 2. 暫停傳送 Checkbox -->
                     <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
                         <span>暫停發送</span>
                     </label>
+
+                    <!-- 3. 清除按鈕 -->
                     <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()">🗑️ 清除</button>
+                    
+                    <!-- 隱藏的 File Input -->
                     <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
                 </div>
+                
                 <form onsubmit="handleSubmit(event)" class="input-row">
+                    <button type="button" id="voice-btn" class="secondary" title="語音輸入 (按住不放)" aria-label="語音輸入">🎤</button>
                     <textarea id="user-input" placeholder="輸入訊息..." rows="1" aria-label="輸入訊息區"></textarea>
                     <button type="submit" id="submit-btn" title="發送">傳送</button>
                 </form>
@@ -315,41 +337,37 @@
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
             <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
             
-            <!-- 模式選擇 -->
+            <!-- 新增：快速 OCR 功能區塊 -->
             <div class="settings-card" style="border-color: var(--accent-color);">
-                <h3>1. 選擇模式</h3>
-                <fieldset style="border:none; padding:0; margin:0;">
-                    <label class="check-btn" style="margin-bottom:8px;">
-                        <input type="radio" name="reader-mode" value="chandra">
-                        <span style="font-weight:bold;">Chandra OCR (Datalab)</span>
-                    </label>
-                    <label class="check-btn" style="margin-bottom:8px;">
-                        <input type="radio" name="reader-mode" value="hybrid" checked>
-                        <span style="font-weight:bold;">字符讀取 + OCR (混合精準)</span>
-                    </label>
-                    <label class="check-btn" style="margin-bottom:0;">
-                        <input type="radio" name="reader-mode" value="visual">
-                        <span style="font-weight:bold;">只用 OCR (純視覺)</span>
-                    </label>
-                </fieldset>
-                <p style="font-size:0.9rem; color:#aaa; margin-top:10px;">
-                    * 混合精準模式：適合 PDF 文件，同時讀取文字層與進行視覺分析。<br>
-                    * 若上傳圖片，將自動切換為「只用 OCR」。
-                </p>
+                <h3>📸 Chandra OCR</h3>
+                <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
+                
+                <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
+                    📸 拍攝 / 取得文字 (強制使用 Chandra)
+                </button>
+                <p style="font-size:0.9rem; color:#aaa;">* 按 Alt + O 快速啟動。結果將直接顯示於下方。</p>
+                
+                <!-- 結果顯示區，支援焦點導航 -->
+                <div id="quick-ocr-output" role="region" aria-label="文字識別結果" tabindex="-1">
+                    (等待拍攝...)
+                </div>
             </div>
 
-            <!-- 操作區域 -->
             <div class="settings-card">
-                <h3>2. 執行操作</h3>
-                <input type="file" id="tool-file-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleToolFileSelect()">
+                <h3>📄 俗業讀取 (General Reader)</h3>
+                <p style="color:#aaa; font-size:0.9rem;">
+                    2025 新功能：結合「文字層」與「視覺 AI」進行逐頁校對。
+                    即使超過 100 頁也能完整輸出不遺漏。
+                </p>
+                <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
                 
-                <button type="button" class="action-btn high-contrast" onclick="document.getElementById('tool-file-input').click()">
-                    📸 拍攝 / 選擇檔案並分析
+                <button type="button" id="pdf-start-btn" class="action-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
+                    選擇 PDF 檔案並分析
                 </button>
                 
                 <div style="margin-top:10px;">
                     <label class="check-btn">
-                        <input type="checkbox" id="tool-translate"> <span>分析後翻譯成繁體中文</span>
+                        <input type="checkbox" id="pdf-translate"> <span>OCR 後翻譯成繁體中文</span>
                     </label>
                 </div>
             </div>
@@ -369,52 +387,36 @@
 
             <div id="settings-area">
                 <div class="settings-card">
-                    <h3>🤖 AI 對話模型設定</h3>
+                    <h3>🤖 AI 模型設定</h3>
                     <div style="background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
-                        ⚠️ 2026 提示：若清單中的模型已過時，請勾選「使用自訂模型 ID」並手動輸入。
+                        ⚠️ 2025 提示：推薦使用 Google Gemini 或 OpenRouter。
                     </div>
                     
-                    <label>主要服務商 (對話/分析):</label>
+                    <label>主要服務商:</label>
                     <select id="provider-select" onchange="handleProviderChange(true)">
-                        <option value="gemini">Google Gemini</option>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="openai">OpenAI (標準)</option>
-                        <option value="claude">Anthropic Claude</option>
+                        <option value="gemini">Google Gemini (推薦)</option>
+                        <option value="openrouter">OpenRouter (推薦)</option>
+                        <option value="datalab">Datalab (Chandra OCR)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="groq">Groq</option>
                         <option value="mistral">Mistral AI</option>
-                        <option value="perplexity">Perplexity AI</option>
+                        <option value="perplexity">Perplexity</option>
                     </select>
 
-                    <label>對話 AI API Key:</label>
+                    <label>API Key:</label>
                     <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
                     
-                    <label>選擇模型:</label>
-                    <!-- 新增：強制手動模型開關 -->
-                    <label class="check-btn" style="margin-bottom:10px; padding:5px;">
-                        <input type="checkbox" id="use-custom-model" onchange="toggleCustomModelInput()"> 
-                        <span>使用自訂模型 ID (Use Custom Model ID)</span>
-                    </label>
-
-                    <div id="dropdown-model-area">
-                        <label>模型清單:</label>
-                        <div style="display:flex; gap:10px;">
-                            <select id="model-select" onchange="saveSettings()" style="margin-bottom:0;"></select>
-                            <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0;" title="重新整理模型清單">🔄</button>
-                        </div>
-                    </div>
-
-                    <div id="custom-model-area" class="hidden" style="margin-top:10px;">
-                        <label>手動輸入模型 ID:</label>
-                        <input type="text" id="custom-model-input" placeholder="例如: gpt-5-preview, gemini-2.0-pro-exp" onchange="saveSettings()">
-                    </div>
-                </div>
-
-                <!-- Chandra OCR 專屬設定 -->
-                <div class="settings-card" style="border-left: 5px solid #ff00ff;">
-                    <h3>📸 Chandra OCR 設定 (Datalab)</h3>
-                    <p style="font-size:0.9rem; color:#ccc;">此設定專用於「文字讀取」功能中的 Chandra 模式。</p>
+                    <label>模型過濾:</label>
+                    <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選..." oninput="handleModelFilter()">
                     
-                    <label>Datalab API Key:</label>
-                    <input type="password" id="datalab-key" placeholder="在此輸入 Chandra / Datalab API Key" onchange="saveSettings()">
+                    <label>選擇模型:</label>
+                    <div style="display:flex; gap:10px;">
+                        <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0;"></select>
+                        <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0;">更新</button>
+                    </div>
+                    <div id="custom-model-wrapper" class="hidden" style="margin-top:10px;">
+                        <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+                    </div>
                 </div>
 
                 <div class="settings-card">
@@ -428,16 +430,23 @@
                 </div>
 
                 <div class="settings-card">
-                    <h3>⌨️ 操作設定</h3>
+                    <h3>🎤 語音與操作</h3>
+                    <select id="voice-engine" onchange="saveVoiceSettings()">
+                        <option value="browser">瀏覽器原生 (免費)</option>
+                        <option value="openai">OpenAI Whisper (付費)</option>
+                        <option value="groq">Groq Whisper (快速)</option>
+                    </select>
+                    <input type="password" id="voice-api-key" placeholder="語音專用 Key (選填)" onchange="saveVoiceSettings()">
+                    
                     <label class="check-btn">
-                        <input type="checkbox" id="enter-to-send" checked onchange="saveSettings()"> <span>按 Enter 鍵傳送</span>
+                        <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
                     <label class="check-btn" id="openrouter-settings" class="hidden">
-                        <input type="checkbox" id="openrouter-web-search" onchange="saveSettings()"> <span>啟用聯網搜尋 (OpenRouter)</span>
+                        <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
                     </label>
                     
                     <label>回應逾時 (秒):</label>
-                    <input type="number" id="timeout-setting" value="120" onchange="saveSettings()">
+                    <input type="number" id="timeout-setting" value="120">
                 </div>
 
                 <div class="settings-card">
@@ -447,8 +456,7 @@
                         <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
                         <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
                     </div>
-                    <textarea id="system-prompt" rows="5" placeholder="在此輸入系統指令..." onchange="saveCurrentPrompt()"></textarea>
-                    <div id="prompt-label" style="font-size:0.8rem; color:#888; text-align:right; margin-top:5px;">當前編輯: 一般對話</div>
+                    <textarea id="system-prompt" rows="5" placeholder="在此輸入系統指令..."></textarea>
                 </div>
 
                 <div class="settings-card" style="border-color: #550000;">
@@ -457,7 +465,7 @@
                     <button type="button" class="secondary" onclick="copyErrorLog()">複製日誌</button>
                 </div>
 
-                <button type="button" class="action-btn" onclick="saveSettings(true)">儲存所有設定</button>
+                <button type="button" class="action-btn" onclick="saveSettings()">儲存所有設定</button>
                 <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
             </div>
         </section>
@@ -483,10 +491,9 @@
         // --- 核心變數：Cloudflare Worker 代理 ---
         const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
 
-        // --- 全域變數 ---
+        // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
-        let currentPromptType = 'chat'; // 'chat', 'ocr', 'translate'
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -512,6 +519,46 @@
             }
         }
 
+        // --- 核心 2: 原始與新增邏輯 ---
+        
+        class UniversalTextNormalizer {
+            static getScriptType(char) {
+                if (!char) return 'other';
+                const code = char.charCodeAt(0);
+                if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3040 && code <= 0x30FF) || (code >= 0xAC00 && code <= 0xD7AF)) return 'cjk';
+                if ((code >= 0x0E00 && code <= 0x0E7F) || (code >= 0x1780 && code <= 0x17FF)) return 'sea';
+                if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0590 && code <= 0x05FF)) return 'rtl';
+                if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A) || (code >= 0x0030 && code <= 0x0039) || (code >= 0x00C0 && code <= 0x024F)) return 'latin';
+                return 'other';
+            }
+            static normalize(text) {
+                if (!text) return "";
+                let res = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/([a-zA-Z])-\n([a-zA-Z])/g, "$1$2");
+                const lines = res.split("\n");
+                let processed = "";
+                for (let i = 0; i < lines.length; i++) {
+                    let curr = lines[i].trim();
+                    if (curr.length === 0) { processed += "\n\n"; continue; }
+                    if (i < lines.length - 1) {
+                        let next = lines[i + 1].trim();
+                        if (next.length === 0) { processed += curr + "\n"; continue; }
+                        let lastChar = curr.slice(-1);
+                        let nextChar = next.charAt(0);
+                        const typeA = this.getScriptType(lastChar);
+                        const typeB = this.getScriptType(nextChar);
+                        if ((typeA === 'cjk' || typeA === 'sea') && (typeB === 'cjk' || typeB === 'sea')) processed += curr; 
+                        else if ((typeA === 'cjk' && typeB === 'latin') || (typeA === 'latin' && typeB === 'cjk')) processed += curr;
+                        else if (/^[-*•]/.test(next) || /^[-*•]/.test(curr)) processed += curr + "\n";
+                        else processed += curr + " ";
+                    } else { processed += curr; }
+                }
+                processed = processed.replace(/([\u2e80-\u9fff])\s+([\u2e80-\u9fff])/g, "$1$2");
+                processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
+                processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
+                return processed.replace(/\n{3,}/g, "\n\n").trim();
+            }
+        }
+
         window.reportError = function(msg, errObj) {
             const time = new Date().toLocaleTimeString();
             const errText = errObj ? (errObj.stack || errObj.message || JSON.stringify(errObj)) : "N/A";
@@ -519,604 +566,1033 @@
             if (logArea) logArea.value += `[${time}] ${msg}\n${errText}\n----------------\n`;
             console.error(msg, errObj);
             updateStatusBar(`錯誤: ${msg}`, 'error');
+            playAudioCue('error');
         };
 
         window.addEventListener('pdfjs-loaded', () => {
+            const btn = document.getElementById('pdf-start-btn');
+            if (btn) {
+                btn.innerText = "📄 選擇 PDF 檔案並分析";
+                btn.disabled = false;
+            }
             showReadyStatus();
         });
 
-        // --- AI Prompts (預設值) ---
-        const DEFAULT_PROMPTS = {
-            chat: `# Persona
-You are a top-tier AI visual and information assistant dedicated to serving visually impaired individuals. Your core duty is to act as an extension of the user's eyes and brain.
+        const DEFAULT_CHAT_PROMPT = `# Persona
+You are a top-tier AI visual and information assistant dedicated to serving visually impaired individuals. Your core duty is to act as an extension of the user's eyes and brain, providing information that is safe, precise, and easy to receive via Screen Reader software.
 
 # Global Rules
-1. **Output Language**: Traditional Chinese (Hong Kong style).
-2. **Accessibility**: Use Markdown headers (\`#\`) and lists. Avoid decorative symbols.
-3. **Content**: Be concise but rich in detail.`,
-            
-            ocr: `# SYSTEM ROLE
-You are a "Hybrid OCR & Accessibility Engine".
-Inputs: Raw Text + Page Image.
-MISSION: Reconstruct content into Markdown.
-RULES: Zero Omission. Describe visuals. Fix garbled text using image.`,
-            
-            translate: `# ROLE
-Translator specializing in Traditional Chinese (Hong Kong).
-TASK: Translate input to HK Traditional Chinese.
-- No summarization.
-- Use HK vocabulary (e.g. 智能電話, 質素).`
-        };
+Regardless of the task, you must strictly adhere to the following three major principles:
+
+1. **Language Standards**:
+   - **Sole Output Language**: Traditional Chinese (Hong Kong style vocabulary).
+   - **Translation Requirement**: If the source data is in a foreign language, you must digest and translate it into fluent Chinese. It is **strictly prohibited** to display the original text in the output (unless the user specifically requests a comparison).
+
+2. **Accessibility Format**:
+   - **Markdown Structure**: You must utilize \`#\` (headings) and \`-\` (lists) to establish a clear hierarchy, facilitating navigation by screen readers.
+   - **Symbol Ban**: It is **strictly prohibited** to output \`[ ]\` (square brackets) or \`{ }\` (curly braces) or any decorative symbols that might interfere with the reading rhythm. When citing sources, state them directly in the narrative; do not use notations like \`[1]\`.
+
+3. **Content Style**:
+   - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.`;
+
+        // 【更新】第一專屬指令：混合模式 (文字+圖片)
+        const HYBRID_PROMPT = `# SYSTEM ROLE
+You are a specialized "Hybrid OCR & Accessibility Engine" for visually impaired users.
+You will receive two inputs for a single PDF page:
+1. **Raw Text**: Extracted via software (may contain garbled text/mojibake).
+2. **Page Image**: The visual ground truth.
+
+# MISSION
+Reconstruct the page content into perfect **Markdown** format by cross-referencing the Raw Text and the Page Image.
+
+# STRICT EXECUTION RULES
+1. **Zero Omission Policy**:
+   - Transcribe EVERY single character visible in the image.
+   - Do NOT summarize. Do NOT skip headers, footers, or sidebars.
+   - If the "Raw Text" is incomplete, rely on the "Page Image" to fill in the gaps.
+
+2. **Image Description (Accessibility)**:
+   - If the page contains charts, diagrams, or photos, you must insert a description block in the exact location.
+   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
+   - Description must be objective and detailed (colors, positions, text inside image).
+
+3. **Format & Language**:
+   - Use strict Markdown (Headers \`#\`, Lists \`-\`, Tables \`| |\`).
+   - If the content is in a foreign language, translate it to **Traditional Chinese (Hong Kong)** immediately.
+   - If the content is already Chinese, preserve it exactly.
+
+# OUTPUT
+Output ONLY the final Markdown content. No conversational filler (e.g., "Here is the text").`;
+
+        // 【更新】第二專屬指令：純視覺模式 (僅圖片)
+        const VISUAL_PROMPT = `# SYSTEM ROLE
+You are a high-precision "Visual OCR Expert" for visually impaired users.
+You will receive a **Page Image**.
+
+# MISSION
+Visually recognize and transcribe all text from the image into **Markdown**, and describe any visual elements.
+
+# STRICT EXECUTION RULES
+1. **Verbatim Transcription**:
+   - Transcribe text exactly as seen. Do NOT summarize or paraphrase.
+   - Pay attention to multi-column layouts; read from top-left to bottom-right logically.
+   - Include page numbers and small print.
+
+2. **Visual Description**:
+   - Detect all non-text elements (photos, icons, charts).
+   - Insert a description block at the corresponding position.
+   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
+
+3. **Format & Language**:
+   - Output must be in **Traditional Chinese (Hong Kong)**.
+   - If the original text is English/Other, translate it fluently while preserving the original structure.
+   - Use Markdown tables for any grid data found in the image.
+
+# OUTPUT
+Output ONLY the final Markdown content. Do not output code blocks (\`\`\`markdown) wrapper, just the raw content.`;
         
-        // 記憶體中的 Prompts 狀態
-        let promptStorage = { ...DEFAULT_PROMPTS };
+        // 為了相容設定介面的 "DEFAULT_OCR_PROMPT"，我們先用 HYBRID 填充，但實際執行會動態切換
+        const DEFAULT_OCR_PROMPT = HYBRID_PROMPT;
+        
+        const DEFAULT_TRANSLATE_PROMPT = `# ROLE
+You are a world-class Translator and Terminologist fluent in all major languages, specializing in "Traditional Chinese (Hong Kong variant)". Your work is defined by three core principles: Faithfulness (信), Expressiveness (達), and Elegance (雅).
+
+# TASK
+Translate the provided input text into high-quality **Traditional Chinese (Hong Kong)**.
+
+# STRICT GUIDELINES (Must Follow)
+1. **NO Summarization**: Translate every single sentence. Do not omit any details, technical terms, or explanations.
+2. **Localization (Hong Kong Style)**:
+   - Use HK-specific vocabulary (e.g., "Smart phone" -> 智能電話, "Project" -> 專案/項目, "Quality" -> 質素, "Software" -> 軟件).
+   - Avoid Mainland Chinese or Taiwanese idioms unless they are standard in HK professional contexts.
+3. **Formatting**: Preserve the original Markdown structure (headings, bullets, links).
+4. **No Filler**: Do not output "Here is the translation" or explanations. Just output the translation.
+
+# OUTPUT
+Directly provide the final, polished Traditional Chinese translation.`;
+        
+        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
 
         const PROVIDERS = {
-            gemini: { 
-                type: "google",
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "gemini-2.0-flash-exp",
-                canFetch: true, 
-                listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", 
-                endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:{MODE}?key={KEY}",
-                models: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"] 
-            },
-            openrouter: { 
-                type: "openai",
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "google/gemini-2.0-flash-exp:free", 
-                canFetch: true, 
-                listUrl: "https://openrouter.ai/api/v1/models",
-                endpoint: "https://openrouter.ai/api/v1/chat/completions",
-                models: ["google/gemini-2.0-flash-exp:free", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"] 
-            },
-            mistral: { 
-                type: "openai", 
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "mistral-small-latest", 
-                canFetch: true, 
-                listUrl: "https://api.mistral.ai/v1/models", 
-                endpoint: "https://api.mistral.ai/v1/chat/completions",
-                models: ["mistral-large-latest", "mistral-small-latest", "codestral-latest"] 
-            },
-            openai: {
-                type: "openai",
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "gpt-4o",
-                canFetch: true, 
-                listUrl: "https://api.openai.com/v1/models",
-                endpoint: "https://api.openai.com/v1/chat/completions",
-                models: ["gpt-4o", "gpt-4.5-preview", "gpt-4o-mini", "o1-preview"]
-            },
-            claude: {
-                type: "anthropic",
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "claude-3-5-sonnet-latest",
-                canFetch: false, 
-                listUrl: "",
-                endpoint: "https://api.anthropic.com/v1/messages",
-                models: ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
-            },
-            perplexity: {
-                type: "openai",
-                prompt: DEFAULT_PROMPTS.chat, 
-                defaultModel: "sonar-pro",
-                canFetch: true, 
-                listUrl: "https://api.perplexity.ai/models",
-                endpoint: "https://api.perplexity.ai/chat/completions",
-                models: ["sonar-pro", "sonar", "sonar-reasoning-pro"]
-            },
-            datalab: { 
-                type: "datalab",
-                prompt: DEFAULT_PROMPTS.ocr, 
-                defaultModel: "chandra", 
-                canFetch: false, 
-                listUrl: "",
-                endpoint: "https://api.datalab.to/v1/marker",
-                models: ["chandra"] 
-            }
+            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
+            openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
+            datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
+            mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
+            openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
+            groq: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "llama-3.3-70b-versatile", canFetch: true, listUrl: "https://api.groq.com/openai/v1/models", models: ["llama-3.3-70b-versatile"] },
+            perplexity: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "sonar-pro", canFetch: false, models: ["sonar-pro"] }
         };
 
-        // --- 核心邏輯：代理與 API 呼叫 ---
+        let currentActiveModelId = "";
+        let selectedFile = null;
+        let recognition = null; 
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let chatHistory = [];
+        let audioContext = null;
+        let allCurrentModels = [];
+        let isVoiceRecording = false;
+        let specificConfigs = { ocr: null, translate: null };
+        let memoryPrompts = { chat: "", ocr: "", translate: "" };
+        let currentEditingMode = 'chat'; 
 
-        async function proxyFetch(targetUrl, options, providerType) {
-            const headers = new Headers(options.headers);
-            headers.set("X-Target-URL", targetUrl);
-            headers.set("X-Provider-Type", providerType); 
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        function ensureAudioContext() {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume().catch(e => console.error(e));
+        }
+
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            document.addEventListener(evt, ensureAudioContext, { once: false, passive: true });
+        });
+        
+        document.addEventListener('keydown', handleGlobalShortcuts);
+
+        function initVoiceButtonEvents() {
+            const btn = document.getElementById('voice-btn');
+            if (!btn) return;
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); ensureAudioContext(); startVoiceRecording(); }, {passive: false});
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
+            btn.addEventListener('mousedown', (e) => { ensureAudioContext(); startVoiceRecording(); });
+            btn.addEventListener('mouseup', (e) => { stopVoiceRecording(); });
+            btn.addEventListener('mouseleave', (e) => { if(isVoiceRecording) stopVoiceRecording(); });
+            btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
+        function handleGlobalShortcuts(e) {
+            if (!e.altKey || !e.shiftKey) return;
+            const key = e.key.toLowerCase();
+            
+            if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
+
+            if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
+            const actions = {
+                's': () => switchTab('settings'),
+                'c': { id: 'copy-btn' },
+                't': { id: 'export-txt-btn' },
+                'h': { id: 'export-html-btn' },
+                'u': { id: 'upload-btn' },
+                'n': { id: 'new-chat-btn' },
+                'k': { id: 'submit-btn' },
+                'i': { id: 'user-input', type: 'focus' },
+                '1': () => switchTab('chat'),
+                '2': () => switchTab('tools'),
+                '3': () => switchTab('settings')
+            };
+            if (actions[key]) {
+                e.preventDefault(); ensureAudioContext();
+                if (typeof actions[key] === 'function') actions[key]();
+                else {
+                    const target = document.getElementById(actions[key].id);
+                    if (target) { if (actions[key].type === 'focus') target.focus(); else target.click(); }
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
+                    ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral'].forEach(p => localStorage.removeItem(`${p}_prompt`));
+                    localStorage.setItem(PROMPT_VERSION_KEY, 'true');
+                }
+                const savedProvider = localStorage.getItem('provider');
+                const savedTimeout = localStorage.getItem('timeout_setting');
+                if (savedTimeout) document.getElementById('timeout-setting').value = savedTimeout;
+                
+                const orSearch = document.getElementById('openrouter-web-search');
+                if(orSearch) orSearch.checked = (localStorage.getItem('openrouter_web_search') === 'true');
+                
+                const savedVoiceEngine = localStorage.getItem('voice_engine');
+                if (savedVoiceEngine) document.getElementById('voice-engine').value = savedVoiceEngine;
+                const savedVoiceKey = localStorage.getItem('voice_api_key');
+                if (savedVoiceKey) document.getElementById('voice-api-key').value = savedVoiceKey;
+                const savedEnter = localStorage.getItem('enter_to_send');
+                document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
+
+                const savedSpecifics = localStorage.getItem('specific_configs');
+                if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
+                updateConfigStatusDisplay();
+
+                memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
+                memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
+
+                if (savedProvider && PROVIDERS[savedProvider]) {
+                    document.getElementById('provider-select').value = savedProvider;
+                } else {
+                    document.getElementById('provider-select').value = 'gemini'; 
+                }
+                
+                handleProviderChange(false); 
+                initVoiceSystem();
+                initPasteImage();
+                initDragAndDrop();
+                initEnterKey();
+                initVoiceButtonEvents();
+                
+                const pauseToggle = document.getElementById('pause-send');
+                if(pauseToggle) pauseToggle.checked = false;
+
+                const hasKey = document.getElementById('api-key').value.trim().length > 0;
+                if (!hasKey) {
+                    switchTab('settings');
+                    showTransientStatus('請先設定 API Key', 'error');
+                } else {
+                    switchTab('chat');
+                }
+
+            } catch (e) { window.reportError("Init Error", e); }
+        });
+
+        function triggerQuickOCR() {
+            switchTab('tools');
+            document.getElementById('quick-ocr-input').click();
+        }
+
+        async function handleQuickOCRFileSelect() {
+            const input = document.getElementById('quick-ocr-input');
+            const file = input.files[0];
+            if (!file) return;
+            
+            // 強制檢查 Datalab Key
+            const datalabKey = localStorage.getItem('datalab_key');
+            if (!datalabKey) {
+                alert("⚠️ 錯誤：快速 OCR 必須使用 Chandra (Datalab) 引擎。\n\n請先到「設定」頁面選擇 'Datalab' 並輸入 API Key，然後再試一次。");
+                switchTab('settings');
+                // 自動切換到 Datalab 選項方便使用者
+                document.getElementById('provider-select').value = 'datalab';
+                handleProviderChange(true);
+                return;
+            }
+
+            const outputDiv = document.getElementById('quick-ocr-output');
+            outputDiv.innerHTML = '<p>正在透過 Chandra OCR 進行分析，請稍候...</p>';
+            outputDiv.focus(); 
+            
+            updateStatusBar("正在識別文字 (Chandra)...", "busy");
+            playAudioCue('start');
 
             try {
-                const response = await fetch(USER_WORKER_URL, {
-                    method: options.method || 'POST',
-                    headers: headers,
-                    body: options.body
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Proxy Error (${response.status}): ${errText}`);
-                }
-                return response;
+                let fileData = await readFileAsBase64(file);
+                
+                // 強制使用 Datalab 呼叫
+                const res = await callAI(
+                    'datalab', 
+                    DEFAULT_OCR_PROMPT, 
+                    [], 
+                    "", 
+                    fileData,
+                    file.type, 
+                    null,
+                    'chandra',
+                    datalabKey
+                );
+                
+                const safeHTML = DOMPurify.sanitize(marked.parse(res));
+                outputDiv.innerHTML = safeHTML;
+                
+                playAudioCue('success');
+                outputDiv.focus();
+                updateStatusBar("識別完成");
+                
             } catch (e) {
-                console.error("Proxy Fetch Failed:", e);
-                throw e;
+                window.reportError("Quick OCR Failed", e);
+                outputDiv.innerHTML = `<p style="color:#ff5555; font-weight:bold;">⚠️ 識別失敗：${e.message}</p>`;
+                outputDiv.focus();
             }
+            input.value = '';
         }
 
-        async function callAI(messages, systemPrompt, imageBase64 = null) {
-            const providerKey = document.getElementById('provider-select').value;
-            const config = PROVIDERS[providerKey];
-            const apiKey = document.getElementById('api-key').value.trim();
+        function switchPromptEditor(mode) {
+            const textarea = document.getElementById('system-prompt');
+            memoryPrompts[currentEditingMode] = textarea.value;
+            currentEditingMode = mode;
+            textarea.value = memoryPrompts[mode];
+            document.getElementById('tab-chat').classList.toggle('secondary', mode !== 'chat');
+            document.getElementById('tab-ocr').classList.toggle('secondary', mode !== 'ocr');
+            document.getElementById('tab-translate').classList.toggle('secondary', mode !== 'translate');
+            document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
+        }
+
+        function setSpecificConfig(type) {
+            const provider = document.getElementById('provider-select').value;
+            const model = currentActiveModelId;
+            specificConfigs[type] = { provider, model };
+            localStorage.setItem('specific_configs', JSON.stringify(specificConfigs));
+            const currentKey = document.getElementById('api-key').value;
+            if (currentKey) localStorage.setItem(`${provider}_key`, currentKey.trim());
+            updateConfigStatusDisplay();
+            showTransientStatus(`已設定 ${type} 專用模型`);
+        }
+
+        function clearSpecificConfigs() {
+            specificConfigs = { ocr: null, translate: null };
+            localStorage.removeItem('specific_configs');
+            updateConfigStatusDisplay();
+            showTransientStatus("已重置分工設定");
+        }
+
+        function updateConfigStatusDisplay() {
+            const display = document.getElementById('config-status-display');
+            let html = "";
+            html += specificConfigs.ocr ? `• OCR: ${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}<br>` : "";
+            html += specificConfigs.translate ? `• 翻譯: ${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "";
+            display.innerHTML = html || "目前跟隨主要設定";
+        }
+
+        function playAudioCue(type) {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            const now = audioContext.currentTime;
             
-            // 決定模型 ID (下拉選單 或 自訂輸入)
-            let model;
-            const useCustom = document.getElementById('use-custom-model').checked;
-            if (useCustom) {
-                model = document.getElementById('custom-model-input').value.trim();
-                if (!model) throw new Error("請輸入自訂模型 ID");
-            } else {
-                model = document.getElementById('model-select').value;
+            if (type === 'start') { 
+                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, now); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1); 
+            } else if (type === 'success') { 
+                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.15); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.2); 
+            } else if (type === 'error') { 
+                oscillator.type = 'sawtooth'; oscillator.frequency.setValueAtTime(150, now); gainNode.gain.setValueAtTime(0.15, now); oscillator.start(now); oscillator.stop(now + 0.4); 
+            } else if (type === 'abort') {
+                oscillator.type = 'triangle'; oscillator.frequency.setValueAtTime(400, now); oscillator.frequency.linearRampToValueAtTime(200, now + 0.1); gainNode.gain.setValueAtTime(0.1, now); oscillator.start(now); oscillator.stop(now + 0.1);
             }
-
-            if (config.type !== 'datalab' && !apiKey) throw new Error("請輸入 API Key");
-
-            let endpoint = config.endpoint;
-            let payload = {};
-            let headers = { "Content-Type": "application/json" };
-
-            // 1. 根據不同廠商建構 Payload
-            if (config.type === 'datalab') {
-                const datalabKey = document.getElementById('datalab-key').value.trim();
-                if (!datalabKey) throw new Error("請輸入 Chandra / Datalab API Key");
-                headers["x-api-key"] = datalabKey;
-                delete headers["Content-Type"]; // 讓瀏覽器生成 boundary
-
-                const formData = new FormData();
-                if (imageBase64) {
-                    try {
-                        const res = await fetch(imageBase64);
-                        const blob = await res.blob();
-                        formData.append("file", blob, "upload_image.jpg");
-                    } catch (e) { throw new Error("圖片轉換失敗"); }
-                } else {
-                    throw new Error("Chandra 模式必須上傳圖片或 PDF");
-                }
-                formData.append("langs", "zh,en");
-                formData.append("force_ocr", "true");
-                formData.append("paginate", "true");
-                payload = formData;
-
-            } else if (config.type === 'google') {
-                endpoint = endpoint.replace('{MODEL}', model).replace('{MODE}', 'generateContent').replace('{KEY}', apiKey);
-                const contents = [];
-                messages.forEach(msg => {
-                    const role = msg.role === 'user' ? 'user' : 'model';
-                    contents.push({ role: role, parts: [{ text: msg.content }] });
-                });
-                const lastMsg = contents[contents.length - 1];
-                if (systemPrompt) payload.system_instruction = { parts: [{ text: systemPrompt }] };
-                if (imageBase64 && lastMsg.role === 'user') {
-                    const base64Clean = imageBase64.split(',')[1];
-                    const mimeType = imageBase64.split(';')[0].split(':')[1];
-                    lastMsg.parts.push({ inline_data: { mime_type: mimeType, data: base64Clean } });
-                }
-                payload.contents = contents;
-                headers["x-goog-api-key"] = apiKey;
-
-            } else if (config.type === 'anthropic') {
-                headers["x-api-key"] = apiKey;
-                headers["anthropic-version"] = "2023-06-01";
-                const anthropicMessages = messages.map(m => ({ role: m.role, content: m.content }));
-                if (imageBase64) {
-                    const lastMsg = anthropicMessages[anthropicMessages.length - 1];
-                    if (lastMsg.role === 'user') {
-                        const base64Clean = imageBase64.split(',')[1];
-                        const mimeType = imageBase64.split(';')[0].split(':')[1];
-                        lastMsg.content = [
-                            { type: "image", source: { type: "base64", media_type: mimeType, data: base64Clean } },
-                            { type: "text", text: typeof lastMsg.content === 'string' ? lastMsg.content : "" }
-                        ];
-                    }
-                }
-                payload = { model: model, max_tokens: 4096, system: systemPrompt, messages: anthropicMessages };
-
-            } else {
-                // OpenAI / Mistral / Perplexity
-                headers["Authorization"] = `Bearer ${apiKey}`;
-                const openAiMessages = [];
-                if (systemPrompt) openAiMessages.push({ role: "system", content: systemPrompt });
-                messages.forEach(m => {
-                    let content = m.content;
-                    if (imageBase64 && m === messages[messages.length - 1] && m.role === 'user') {
-                        content = [
-                            { type: "text", text: m.content },
-                            { type: "image_url", image_url: { url: imageBase64 } }
-                        ];
-                    }
-                    openAiMessages.push({ role: m.role, content: content });
-                });
-                payload = { model: model, messages: openAiMessages, stream: false };
-                if (providerKey === 'openrouter') {
-                    headers["HTTP-Referer"] = window.location.href;
-                    if (document.getElementById('openrouter-web-search').checked) payload.plugins = ["web_search"];
-                }
-            }
-
-            // 2. 發送請求
-            const requestOptions = {
-                method: "POST",
-                headers: headers,
-                body: config.type === 'datalab' ? payload : JSON.stringify(payload)
-            };
-
-            const response = await proxyFetch(endpoint, requestOptions, config.type);
-            const data = await response.json();
-
-            // 3. 解析回應
-            if (config.type === 'datalab') {
-                if (data.text) return data.text;
-                if (data.error) throw new Error("Datalab: " + data.error);
-            } else if (config.type === 'google') {
-                if (data.candidates && data.candidates[0].content) return data.candidates[0].content.parts.map(p => p.text).join('');
-            } else if (config.type === 'anthropic') {
-                if (data.content && data.content.length > 0) return data.content[0].text;
-            } else {
-                if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
-            }
-            throw new Error("無法解析回應: " + JSON.stringify(data));
         }
 
-        // --- 核心更新：線上取得模型清單 ---
+        function resetConversation() {
+            chatHistory = []; 
+            stickyMemory = { type: null, content: null, mime: null, count: 0 };
+            document.getElementById('chat-output').innerHTML = ""; 
+            document.getElementById('user-input').value = "";
+            selectedFile = null;
+            document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
+            document.getElementById('upload-btn').classList.remove('active');
+            document.getElementById('file-input').value = "";
+            toggleExportButtons(false);
+            showTransientStatus("對話與記憶已清除");
+        }
+
+        function handlePDFToolFileSelect() {
+            const input = document.getElementById('pdf-tool-input');
+            if (input.files.length > 0) {
+                processPDFTool(input.files[0]);
+            }
+            input.value = ""; 
+        }
+        
+        function isCanvasBlank(canvas) {
+            try {
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const imageData = ctx.getImageData(canvas.width/2 - 25, canvas.height/2 - 25, 50, 50);
+                const data = imageData.data;
+                for(let i = 0; i < data.length; i += 4) {
+                    if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) return false; 
+                }
+                return true;
+            } catch(e) { return false; }
+        }
+
+        async function processPDFTool(file) {
+            if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
+            if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF"); return; }
+            
+            resetConversation(); playAudioCue('start');
+            switchTab('chat');
+            
+            const needTranslate = document.getElementById('pdf-translate').checked;
+
+            try {
+                updateStatusBar("正在初始化混合閱讀模式...", "busy");
+                // 改為全新的混合處理模式
+                await performHybridAIProcessing(file, needTranslate);
+
+            } catch (e) { window.reportError("PDF Process Failed", e); }
+        }
+
+        async function performHybridAIProcessing(file, needTranslate) {
+            const controller = new AbortController(); 
+            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+            
+            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
+
+            // 如果使用者選了 Datalab (Chandra)，使用其專屬的 Whole-File OCR
+            if (ocrProvider === 'datalab') {
+                 updateStatusBar("上傳整份文件至 Chandra OCR...", "busy");
+                 let fileData = await readFileAsBase64(file);
+                 let fullText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
+                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(fullText));
+                 setTimeout(() => aiMsg.focus(), 100);
+                 updateStatusBar("完成");
+                 playAudioCue('success');
+                 return;
+            }
+
+            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式 (Sequential Hybrid Processing)
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+            
+            updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
+            
+            // 建立一個即時顯示容器，因為我們要串流顯示每一頁
+            const containerDiv = document.createElement('div');
+            containerDiv.className = `message assistant`;
+            containerDiv.innerHTML = `<h1 class="msg-heading">AI 助理 (即時處理中)：</h1><div class="markdown-body" id="streaming-output"></div>`;
+            document.getElementById('chat-output').appendChild(containerDiv);
+            const outputArea = containerDiv.querySelector('#streaming-output');
+            toggleExportButtons(true);
+
+            let fullAccumulatedText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
+                document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
+
+                // 1. 取得 Text Layer (文字提示)
+                const page = await pdf.getPage(i);
+                let textLayerContent = "";
+                let hasExtractedText = false;
+                
+                try {
+                    const textContent = await page.getTextContent();
+                    textLayerContent = textContent.items.map(item => item.str).join(" ");
+                    
+                    // --- 增強驗證邏輯：清洗與驗證 ---
+                    const totalLen = textLayerContent.length;
+                    
+                    // 條件 1: 長度必須 <= 8000 且 > 20 (避免極短或極長的文字)
+                    if (totalLen > 20 && totalLen <= 8000) {
+                        
+                        // 條件 2: 垃圾字符比例檢查 (Garbage Ratio Check)
+                        // 有效字符定義：中日韓、英文、數字、空白、標準標點符號
+                        const validMatches = textLayerContent.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\w\s.,?!:;"'()\[\]{}+-=%$#@]/g) || [];
+                        const validCount = validMatches.length;
+                        const garbageRatio = 1 - (validCount / totalLen);
+
+                        // 只有當亂碼比例小於 30% 時，才視為有效
+                        if (garbageRatio < 0.3) {
+                             hasExtractedText = true;
+                        } else {
+                             console.warn(`Page ${i}: Garbage ratio too high (${(garbageRatio*100).toFixed(1)}%). Fallback to visual mode.`);
+                        }
+                    } else if (totalLen > 8000) {
+                        console.warn(`Page ${i}: Text too long (${totalLen}). Fallback to visual mode.`);
+                    }
+                    // -----------------------------
+
+                } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
+
+                // 2. 取得 Visual Layer (壓縮圖片)
+                const viewportRaw = page.getViewport({ scale: 1.0 });
+                // 使用 2.0 倍率以確保文字清晰，但限制最大維度以防 OOM
+                const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
+                let canvas = document.createElement('canvas');
+                canvas.width = page.getViewport({ scale }).width; 
+                canvas.height = page.getViewport({ scale }).height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
+                
+                if (isCanvasBlank(canvas)) {
+                    canvas.remove();
+                    continue; // 空白頁跳過
+                }
+                
+                // 轉為 JPEG 格式，品質 0.8，平衡清晰度與封包大小
+                let imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+                // 3. 根據提取結果選擇專屬指令 (Branching Logic)
+                let selectedSystemPrompt = "";
+                let userPromptContent = "";
+
+                if (hasExtractedText) {
+                    // 情況 A: 成功獲取有效字符 -> 使用混合模式 (Hybrid Prompt)
+                    // 將提取的亂碼/文字作為 "Raw Text" 傳入，並附上圖片
+                    selectedSystemPrompt = HYBRID_PROMPT;
+                    userPromptContent = `[Page ${i} Raw Text Start]\n${textLayerContent.substring(0, 8000)}\n[Page ${i} Raw Text End]\n\nPlease process this page according to the Hybrid rules.`;
+                } else {
+                    // 情況 B: 獲取失敗 (純圖/掃描/亂碼過多/文字過長) -> 使用純視覺模式 (Visual Prompt)
+                    // 僅指示 AI 閱讀圖片
+                    selectedSystemPrompt = VISUAL_PROMPT;
+                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer (or text is corrupted). Please perform strict Visual OCR on the image.`;
+                }
+
+                // 如果用戶勾選了翻譯，我們在 User Prompt 尾端再強調一次，雖然 System Prompt 已包含
+                if (needTranslate) {
+                    userPromptContent += "\n\nREMINDER: Translate the output into Traditional Chinese (Hong Kong).";
+                }
+
+                try {
+                    // 4. 呼叫 AI
+                    let pageResult = await callAI(
+                        ocrProvider, 
+                        selectedSystemPrompt, 
+                        [], // No history for OCR pages to save context window
+                        userPromptContent, 
+                        imgBase64, 
+                        "image/jpeg", 
+                        controller.signal, 
+                        ocrModel, 
+                        ocrApiKey
+                    );
+                    
+                    // 格式化輸出
+                    let cleanResult = UniversalTextNormalizer.normalize(pageResult);
+                    fullAccumulatedText += `${cleanResult}\n\n`;
+                    
+                    // 追加節點模式 (Append Node)
+                    const pageNode = document.createElement('div');
+                    pageNode.className = 'new-page';
+                    pageNode.style.marginBottom = "20px";
+                    pageNode.style.borderBottom = "1px dashed #444";
+                    pageNode.style.paddingBottom = "20px";
+                    // 加上頁碼標示，方便閱讀
+                    pageNode.innerHTML = `<h3>Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(cleanResult));
+                    outputArea.appendChild(pageNode);
+                    
+                } catch (e) {
+                    console.error(`Page ${i} AI Error:`, e);
+                    const errorNode = document.createElement('div');
+                    errorNode.innerHTML = `<p style="color:red">Page ${i} Error: ${e.message}</p>`;
+                    outputArea.appendChild(errorNode);
+                } finally {
+                    // 5. 記憶體釋放 (Critical for long PDFs)
+                    canvas.remove();
+                    canvas = null;
+                    imgBase64 = null;
+                }
+
+                // 6. 分頁延遲 (Stability Delay)
+                // Gemini 2.5 Flash 雖然快，但為了避免瞬間並發導致瀏覽器卡頓或 API 429，保留短暫緩衝
+                if (ocrProvider === 'gemini') {
+                    await sleep(6000); // 6秒
+                } else {
+                    await sleep(500); // 其他模型 0.5秒
+                }
+            }
+
+            updateVisualProgress(false);
+            updateStatusBar("文件處理完成");
+            playAudioCue('success');
+            containerDiv.focus();
+        }
+
+        function updateVisualProgress(show, text="") {
+            const el = document.getElementById('visual-progress');
+            if (show) { el.classList.add('active'); el.innerText = text; } 
+            else { el.classList.remove('active'); el.innerText = ""; }
+        }
+
+        // 已移除 extractTextFromPDF_Accurate 及其輔助函式 (由 AI 全權處理排版)
+
+        function initVoiceSystem() {
+            const engine = document.getElementById('voice-engine').value;
+            if (engine === 'browser') initBrowserSpeech(); 
+            else if (recognition) { recognition.stop(); recognition = null; }
+        }
+
+        function initBrowserSpeech() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition(); 
+                recognition.lang = 'zh-HK'; recognition.continuous = true; recognition.interimResults = true; 
+                recognition.onstart = () => { isVoiceRecording=true; document.getElementById('voice-btn').classList.add('recording'); updateStatusBar('聆聽中...', 'recording'); playAudioCue('start'); };
+                recognition.onresult = (e) => {
+                    let t = ''; for (let i = e.resultIndex; i < e.results.length; ++i) if (e.results[i].isFinal) t += e.results[i][0].transcript;
+                    if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
+                };
+                recognition.onerror = () => { stopVoiceInputUI(); playAudioCue('error'); };
+                recognition.onend = () => { if(isVoiceRecording) playAudioCue('abort'); stopVoiceInputUI(); };
+            }
+        }
+
+        function getSupportedMimeType() {
+            if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+            if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+            return ''; 
+        }
+
+        async function startVoiceRecording() {
+            ensureAudioContext(); if (isVoiceRecording) return;
+            const engine = document.getElementById('voice-engine').value;
+            if (engine === 'browser') { if (recognition) try { recognition.start(); } catch(e){} }
+            else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mimeType = getSupportedMimeType();
+                    const options = mimeType ? { mimeType } : undefined;
+                    
+                    mediaRecorder = new MediaRecorder(stream, options); 
+                    audioChunks = []; 
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = async () => { 
+                        await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
+                        stream.getTracks().forEach(t=>t.stop()); 
+                    };
+                    mediaRecorder.start(); isVoiceRecording = true; document.getElementById('voice-btn').classList.add('recording'); playAudioCue('start');
+                } catch (e) { showTransientStatus('麥克風錯誤', 'error'); }
+            }
+        }
+
+        function stopVoiceRecording() {
+            if (!isVoiceRecording) return;
+            ensureAudioContext(); isVoiceRecording = false; playAudioCue('success');
+            if (document.getElementById('voice-engine').value === 'browser' && recognition) recognition.stop();
+            else if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        }
+
+        function stopVoiceInputUI() {
+            isVoiceRecording = false; document.getElementById('voice-btn').classList.remove('recording');
+            if (!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus();
+        }
+
+        async function processWhisperAudio(blob, engine, mime) {
+            let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
+            if (!apiKey) return alert("需 API Key");
+            const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
+            fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
+            updateStatusBar("語音轉譯中...", "busy");
+            try {
+                const res = await fetch(engine==='openai'?"https://api.openai.com/v1/audio/transcriptions":"https://api.groq.com/openai/v1/audio/transcriptions", { method:'POST', headers:{'Authorization':`Bearer ${apiKey}`}, body:fd });
+                const data = await res.json();
+                if (data.text) { document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + data.text; showReadyStatus(); }
+            } catch(e) { window.reportError("Whisper Error", e); }
+            finally { stopVoiceInputUI(); }
+        }
+
+        function saveVoiceSettings() { localStorage.setItem('voice_engine', document.getElementById('voice-engine').value); localStorage.setItem('voice_api_key', document.getElementById('voice-api-key').value); initVoiceSystem(); }
+        function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
+        function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
+        function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
+        
+        function updateStatusBar(t, s='ready') { 
+            const b = document.getElementById('status-bar'); 
+            b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
+            b.className = s; 
+            b.innerText = t; 
+        }
+
+        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
+        function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
+        
+        function addMessage(role, content) {
+            const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
+            div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+            document.getElementById('chat-output').appendChild(div); 
+            toggleExportButtons(true);
+            return div;
+        }
+        function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
+        
+        function handleProviderChange(save=true) {
+            const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
+            document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
+            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
+            
+            const orSet = document.getElementById('openrouter-settings');
+            if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
+            
+            allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
+            handleModelFilter();
+            currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
+            document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
+            if(save) localStorage.setItem('provider', p);
+            showReadyStatus();
+        }
+        function handleModelFilter() {
+            const f = document.getElementById('model-filter-input').value.toLowerCase();
+            updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
+        }
+        function updateModelSelect(list, active) {
+            const s = document.getElementById('model-select'); s.innerHTML = "";
+            let found = false;
+            list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
+            s.appendChild(new Option("自行輸入...", "CUSTOM"));
+            const w = document.getElementById('custom-model-wrapper');
+            if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
+        }
         
         async function fetchOnlineModels() {
-            const key = document.getElementById('provider-select').value;
-            const config = PROVIDERS[key];
-            const apiKey = document.getElementById('api-key').value.trim();
-
-            if (!config.canFetch) {
-                alert("此服務商不支援自動更新模型清單，請手動輸入 ID。");
-                return;
-            }
-            if (!apiKey) {
-                alert("請先輸入 API Key 才能取得模型清單。");
-                return;
-            }
-
-            updateStatusBar("正在更新模型清單...", "busy");
-            const btn = document.getElementById('refresh-btn');
-            btn.disabled = true;
-
+            const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
+            if(!k && p!=='openrouter') return alert("需 API Key");
+            const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
             try {
-                // 建構目標 URL 和 Headers
-                let targetUrl = config.listUrl;
-                let headers = {
-                    "HTTP-Referer": window.location.href // 為 OpenRouter 準備
-                };
-
-                // Google: Key 在 URL
-                if (config.type === 'google') {
-                    targetUrl = targetUrl.replace('{KEY}', apiKey);
-                    headers["x-goog-api-key"] = apiKey;
-                } 
-                // OpenAI / Mistral / Perplexity / OpenRouter: Key 在 Header
-                else {
-                    headers["Authorization"] = `Bearer ${apiKey}`;
-                }
-
-                // 透過 Worker 發送 GET 請求
-                const response = await proxyFetch(targetUrl, {
-                    method: 'GET',
-                    headers: headers
-                }, config.type);
-
-                const data = await response.json();
-                let newModels = [];
-
-                if (config.type === 'google' && data.models) {
-                    // Google 格式: { models: [{name: "models/gemini-pro"}, ...] }
-                    newModels = data.models.map(m => m.name.replace(/^models\//, ''));
-                } else if (data.data) {
-                    // OpenAI 通用格式 (包含 OpenRouter, Mistral, Perplexity): { data: [{id: "model-id"}, ...] }
-                    newModels = data.data.map(m => m.id);
+                let list=[];
+                if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
+                else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+                else if(p==='datalab') return; 
+                else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
+                
+                if(list && list.length > 0) { 
+                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
+                    allCurrentModels=list; 
+                    handleModelFilter(); 
+                    showTransientStatus("模型清單已更新並儲存"); 
                 } else {
-                    throw new Error("無法解析模型清單格式");
+                    throw new Error("找不到可用模型");
                 }
-
-                if (newModels.length > 0) {
-                    PROVIDERS[key].models = newModels;
-                    PROVIDERS[key].isCustomList = true; // 標記為自訂清單以便儲存
-                    handleProviderChange(false); // 更新 UI
-                    saveSettings(true); // 【立即儲存設定】
-                    alert(`成功更新！共取得 ${newModels.length} 個模型。`);
-                } else {
-                    alert("未找到任何模型。");
-                }
-
-            } catch (e) {
-                console.error(e);
-                alert("更新失敗: " + e.message);
-            } finally {
-                updateStatusBar("就緒 (Ready)", "ready");
-                btn.disabled = false;
-            }
+            } catch(e) { window.reportError("更新失敗", e); } 
+            finally { btn.innerText="更新"; btn.disabled=false; }
         }
 
-        // --- 設定管理系統 (已重寫) ---
-
-        const SETTINGS_KEY = 'blind_assist_settings_v3';
-
-        function saveSettings(showMsg = false) {
-            // 儲存前先將當前編輯的 Prompt 存入記憶體
-            saveCurrentPrompt();
-
-            // 準備自訂模型清單的儲存結構
-            const customLists = {};
-            Object.keys(PROVIDERS).forEach(k => {
-                if (PROVIDERS[k].isCustomList) {
-                    customLists[k] = PROVIDERS[k].models;
-                }
-            });
-
-            const settings = {
-                provider: document.getElementById('provider-select').value,
-                apiKey: document.getElementById('api-key').value,
-                datalabKey: document.getElementById('datalab-key').value,
-                
-                // 模型相關
-                model: document.getElementById('model-select').value,
-                useCustomModel: document.getElementById('use-custom-model').checked,
-                customModelId: document.getElementById('custom-model-input').value,
-                customLists: customLists, // 儲存下載的模型清單
-                
-                // 系統指令 (全部儲存)
-                prompts: promptStorage,
-                
-                // 其他設定
-                enterToSend: document.getElementById('enter-to-send').checked,
-                openRouterSearch: document.getElementById('openrouter-web-search').checked,
-                timeout: document.getElementById('timeout-setting').value
-            };
-
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-            if (showMsg) updateStatusBar("設定已儲存", "ready");
+        function handleModelSelectChange() {
+            const s = document.getElementById('model-select');
+            if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
+            else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
         }
-
-        function loadSettings() {
-            const raw = localStorage.getItem(SETTINGS_KEY);
-            if (!raw) {
-                // 初次使用，初始化預設值
-                handleProviderChange(false);
-                return;
-            }
-
-            try {
-                const s = JSON.parse(raw);
-                
-                // 還原 Provider
-                if (s.provider) document.getElementById('provider-select').value = s.provider;
-                
-                // 還原 Keys
-                if (s.apiKey) document.getElementById('api-key').value = s.apiKey;
-                if (s.datalabKey) document.getElementById('datalab-key').value = s.datalabKey;
-                
-                // 還原 Prompts
-                if (s.prompts) promptStorage = s.prompts;
-                // 載入當前顯示的 Prompt
-                document.getElementById('system-prompt').value = promptStorage[currentPromptType];
-
-                // 還原下載的模型清單 (關鍵邏輯)
-                if (s.customLists) {
-                    Object.keys(s.customLists).forEach(k => {
-                        if (PROVIDERS[k]) {
-                            PROVIDERS[k].models = s.customLists[k];
-                            PROVIDERS[k].isCustomList = true;
-                        }
-                    });
-                }
-
-                // 還原其他開關
-                if (s.enterToSend !== undefined) document.getElementById('enter-to-send').checked = s.enterToSend;
-                if (s.openRouterSearch !== undefined) document.getElementById('openrouter-web-search').checked = s.openRouterSearch;
-                if (s.timeout) document.getElementById('timeout-setting').value = s.timeout;
-
-                // 還原模型選擇
-                handleProviderChange(false); // 先產生下拉選單
-                
-                if (s.useCustomModel) {
-                    document.getElementById('use-custom-model').checked = true;
-                    document.getElementById('custom-model-input').value = s.customModelId || "";
-                    toggleCustomModelInput();
-                } else if (s.model) {
-                    const select = document.getElementById('model-select');
-                    // 檢查儲存的模型是否在清單中，若不在則加入 (避免選單跑掉)
-                    if (![...select.options].some(o => o.value === s.model)) {
-                        const opt = document.createElement('option');
-                        opt.value = s.model;
-                        opt.textContent = s.model + " (已存)";
-                        select.appendChild(opt);
-                    }
-                    select.value = s.model;
-                }
-
-            } catch (e) {
-                console.error("載入設定失敗", e);
-                localStorage.removeItem(SETTINGS_KEY); // 清除壞檔
-            }
-        }
-
-        function handleProviderChange(fetchModels = true) {
-            const provider = document.getElementById('provider-select').value;
-            const config = PROVIDERS[provider];
-            
-            // 顯示/隱藏 OpenRouter 特有選項
-            const orSettings = document.getElementById('openrouter-settings');
-            if (orSettings) orSettings.className = (provider === 'openrouter' ? 'check-btn' : 'hidden');
-
-            // 重新填入模型下拉選單
-            const modelSelect = document.getElementById('model-select');
-            modelSelect.innerHTML = '';
-            config.models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.textContent = m;
-                if (m === config.defaultModel) opt.selected = true;
-                modelSelect.appendChild(opt);
-            });
-            
-            // 若切換服務商，更新 System Prompt 顯示
-            // 但如果用戶已經有編輯過，我們通常不覆蓋，除非重置
-            // 這裡保持當前邏輯，只切換模型清單
-        }
-
-        function toggleCustomModelInput() {
-            const checked = document.getElementById('use-custom-model').checked;
-            const dropArea = document.getElementById('dropdown-model-area');
-            const customArea = document.getElementById('custom-model-area');
-            
-            if (checked) {
-                dropArea.classList.add('hidden');
-                customArea.classList.remove('hidden');
-                document.getElementById('custom-model-input').focus();
-            } else {
-                dropArea.classList.remove('hidden');
-                customArea.classList.add('hidden');
-            }
-            saveSettings(); // 即時儲存狀態
-        }
-
-        // --- System Prompt 編輯器切換邏輯 ---
-
-        function saveCurrentPrompt() {
-            const val = document.getElementById('system-prompt').value;
-            promptStorage[currentPromptType] = val;
-        }
-
-        function switchPromptEditor(type) {
-            // 1. 先儲存舊的
-            saveCurrentPrompt();
-            
-            // 2. 切換狀態
-            currentPromptType = type;
-            
-            // 3. 更新 UI 按鈕狀態
-            ['chat', 'ocr', 'translate'].forEach(t => {
-                const btn = document.getElementById(`tab-${t}`);
-                if (t === type) {
-                    btn.classList.remove('secondary');
-                    btn.classList.add('active'); // 可自定義 active 樣式，或用顏色區分
-                    btn.style.border = "2px solid var(--accent-color)";
-                } else {
-                    btn.classList.add('secondary');
-                    btn.style.border = "1px solid #777";
-                }
-            });
-
-            // 4. 載入新的內容
-            document.getElementById('system-prompt').value = promptStorage[type];
-            
-            // 5. 更新標籤文字
-            const labels = { chat: "一般對話", ocr: "OCR 專用", translate: "翻譯專用" };
-            document.getElementById('prompt-label').textContent = `當前編輯: ${labels[type]}`;
+        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); }
+        
+        function saveSettings() {
+            const p = document.getElementById('provider-select').value;
+            const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
+            memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+            localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
+            localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
+            localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+            localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
+            localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+            localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
+            localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
+            localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
+            saveVoiceSettings(); 
+            showTransientStatus("設定已儲存");
+            switchTab(lastActiveTabId || 'chat');
         }
 
         function restoreDefaults() {
-            if(confirm("確定要恢復所有預設值嗎？這將清除您的 API Key。")) {
-                localStorage.removeItem(SETTINGS_KEY);
-                location.reload();
+            const p = document.getElementById('provider-select').value; 
+            memoryPrompts.chat = PROVIDERS[p].prompt;
+            memoryPrompts.ocr = DEFAULT_OCR_PROMPT;
+            memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
+            localStorage.removeItem(`${p}_prompt`);
+            localStorage.removeItem('custom_prompt_ocr');
+            localStorage.removeItem('custom_prompt_translate');
+            document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
+            handleProviderChange(true); 
+            showTransientStatus("已還原預設值");
+        }
+
+        function copyResult() { navigator.clipboard.writeText(document.getElementById('chat-output').innerText).then(()=>showTransientStatus("已複製")); }
+        function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("日誌已複製")); }
+        function exportChat(fmt) {
+            const c = document.getElementById('chat-output');
+            const b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
+        }
+        
+        async function handleFileSelect(f) {
+            f = f || document.getElementById('file-input').files[0];
+            if(f) { 
+                selectedFile = f; 
+                document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
+                document.getElementById('upload-btn').classList.add('active'); 
+                
+                if (f.type === 'application/pdf') {
+                }
+
+                const isPaused = document.getElementById('pause-send').checked;
+                if (!isPaused) {
+                    showTransientStatus("即將自動發送...");
+                    setTimeout(() => {
+                        const event = new Event('submit', { cancelable: true });
+                        document.querySelector('form').dispatchEvent(event); 
+                    }, 700);
+                } else {
+                    showTransientStatus("檔案已加入，請輸入文字後發送"); 
+                    document.getElementById('user-input').focus();
+                }
             }
         }
 
-        // --- 介面互動邏輯 ---
-
-        function updateStatusBar(text, type = 'ready') {
-            const bar = document.getElementById('status-bar');
-            bar.textContent = text;
-            bar.className = type;
-            if (type === 'error') bar.setAttribute('role', 'alert');
-            else bar.setAttribute('role', 'status');
-        }
-
-        function showReadyStatus() {
-            updateStatusBar("就緒 (Ready)", "ready");
-        }
+        function readFileAsBase64(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result.split(',')[1]); rd.onerror=j; rd.readAsDataURL(f);}); }
+        function readFileAsText(f) { return new Promise((r,j)=>{const rd=new FileReader(); rd.onload=()=>r(rd.result); rd.onerror=j; rd.readAsText(f);}); }
 
         async function handleSubmit(e) {
-            e.preventDefault();
-            const input = document.getElementById('user-input');
-            const text = input.value.trim();
-            const fileInput = document.getElementById('file-input');
-            const hasFile = fileInput.files.length > 0;
-
-            if (!text && !hasFile) return;
-
-            appendMessage('user', text || "(發送檔案)");
-            input.value = '';
+            e.preventDefault(); ensureAudioContext();
+            const txt = document.getElementById('user-input').value.trim();
+            if(!txt && !selectedFile) return showTransientStatus("請輸入內容", 'error');
             
-            let imageBase64 = null;
-            if (hasFile) {
-                const file = fileInput.files[0];
-                if (file.type.startsWith('image/')) {
-                    imageBase64 = await readFileAsBase64(file);
-                } else if (file.type === 'application/pdf') {
-                    appendMessage('assistant', "⚠️ 對話模式目前僅支援圖片。PDF 請至「文字讀取」分頁。");
-                    return;
-                }
-                fileInput.value = ''; 
-            }
-
-            updateStatusBar("思考中...", "busy");
-            const submitBtn = document.getElementById('submit-btn');
-            submitBtn.disabled = true;
-
+            playAudioCue('start'); updateStatusBar("處理中...", 'busy');
+            const btn = document.getElementById('submit-btn'); btn.disabled=true;
+            const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), document.getElementById('timeout-setting').value*1000);
+            
             try {
-                const messages = [{ role: "user", content: text }];
-                // 永遠使用當前 `promptStorage['chat']` 的內容作為對話 Prompt
-                const sysPrompt = promptStorage.chat; 
+                let input = txt; 
+                let fileData = null; 
+                let mime = null;
 
-                const responseText = await callAI(messages, sysPrompt, imageBase64);
-                appendMessage('assistant', responseText);
-                updateStatusBar("完成", "ready");
-            } catch (err) {
-                reportError("對話失敗", err);
-                appendMessage('assistant', `❌ 錯誤: ${err.message}`);
-            } finally {
-                submitBtn.disabled = false;
-                input.focus();
-            }
-        }
-
-        function appendMessage(role, text) {
-            const container = document.getElementById('chat-output');
-            const div = document.createElement('div');
-            div.className = `message ${role}`;
-            div.innerHTML = `<h1 class="msg-heading">${role === 'user' ? "你：" : "AI："}</h1><div class="markdown-body">${DOMPurify.sanitize(marked.parse(text))}</div>`;
-            container.appendChild(div);
-            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
-        }
-
-        function readFileAsBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
-        // --- 啟動 ---
-        window.addEventListener('DOMContentLoaded', () => {
-            loadSettings();
-            
-            document.getElementById('user-input').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) {
-                    e.preventDefault();
-                    document.getElementById('submit-btn').click();
+                if(selectedFile) {
+                    // PDF 處理邏輯已變更：直接讀取純文字供 AI 參考，不再進行複雜排版提取
+                    if(selectedFile.type === 'application/pdf') {
+                        // 嘗試簡單提取文字
+                         const arrayBuffer = await selectedFile.arrayBuffer();
+                         const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+                         let pdfText = "";
+                         for (let i = 1; i <= pdf.numPages; i++) {
+                             const content = await pdf.getPage(i).then(p => p.getTextContent());
+                             const str = content.items.map(item => item.str).join(" ");
+                             pdfText += `[Page ${i}]\n${str}\n\n`;
+                         }
+                         
+                        if(pdfText) { 
+                            const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
+                            input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
+                            stickyMemory = { type: 'text', content: cleanPdfText, count: 3 };
+                        }
+                    } 
+                    else if (selectedFile.type.startsWith('image/')) {
+                        fileData = await readFileAsBase64(selectedFile); 
+                        mime = selectedFile.type;
+                        stickyMemory = { type: 'image', content: fileData, mime: mime, count: 3 };
+                    }
+                    else if (selectedFile.type.startsWith('text/') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md') || selectedFile.name.endsWith('.js') || selectedFile.name.endsWith('.html') || selectedFile.name.endsWith('.css') || selectedFile.name.endsWith('.py')) {
+                         const fileText = await readFileAsText(selectedFile);
+                         input = `[文件內容 (${selectedFile.name})]:\n${fileText}\n\n[用戶提問]:\n${txt}`;
+                         stickyMemory = { type: 'text', content: fileText, count: 3 };
+                    }
+                } 
+                else if (stickyMemory.count > 0 && stickyMemory.content) {
+                    stickyMemory.count--;
+                    if (stickyMemory.type === 'image') {
+                        fileData = stickyMemory.content;
+                        mime = stickyMemory.mime;
+                        showTransientStatus(`圖片追問模式 (剩餘 ${stickyMemory.count} 次)`);
+                    } else if (stickyMemory.type === 'text') {
+                        input = `[文件內容回顧]:\n${stickyMemory.content}\n\n[用戶追問]:\n${txt}`;
+                        showTransientStatus(`文件追問模式 (剩餘 ${stickyMemory.count} 次)`);
+                    }
                 }
-            });
-            
-            // 初始化 Prompt 按鈕樣式
-            switchPromptEditor('chat');
-        });
 
+                addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[追問模式]"));
+                
+                document.getElementById('user-input').value = ""; 
+                document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
+                document.getElementById('upload-btn').classList.remove('active');
+                selectedFile = null;
+                
+                const res = await callAI(
+                    document.getElementById('provider-select').value, 
+                    document.getElementById('system-prompt').value,
+                    chatHistory, 
+                    input, 
+                    fileData, 
+                    mime, 
+                    ctl.signal
+                );
+
+                const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
+                setTimeout(() => { aiMsg.focus(); }, 100);
+
+                chatHistory.push({role: 'user', content: input}); 
+                chatHistory.push({role: 'assistant', content: res});
+                if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+
+                playAudioCue('success'); showReadyStatus();
+            } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
+        }
+
+        async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
+            const k = ovKey || document.getElementById('api-key').value; 
+            const m = ovModel || currentActiveModelId;
+            
+            if(!k) throw new Error("需 API Key");
+
+            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 [修正版] ---
+            // 改用 Marker 接口以取得正確的 Markdown 格式
+            if (p === 'datalab') {
+                if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
+                
+                const byteCharacters = atob(file);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {type: mime || 'application/pdf'});
+
+                const formData = new FormData();
+                formData.append('file', blob);
+                formData.append('output_format', 'markdown'); // 強制輸出 Markdown
+                
+                // 改為使用 Marker 接口 (Marker 是 Chandra 的文件處理核心)
+                const postReq = await fetch(USER_WORKER_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'X-Api-Key': k,
+                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker' // 修正為 Marker
+                    },
+                    body: formData,
+                    signal: sig
+                });
+                
+                if (!postReq.ok) {
+                    const errText = await postReq.text();
+                    throw new Error(`Datalab Upload Failed: ${errText}`);
+                }
+                
+                const postData = await postReq.json();
+                const requestId = postData.request_id;
+                
+                while (true) {
+                    if (sig && sig.aborted) throw new Error("使用者取消操作");
+                    
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    const checkReq = await fetch(USER_WORKER_URL, {
+                        method: 'GET', 
+                        headers: { 
+                            'X-Api-Key': k,
+                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}` // 修正為 Marker 查詢
+                        },
+                        signal: sig
+                    });
+                    
+                    if (!checkReq.ok) throw new Error("Datalab Check Failed");
+                    
+                    const checkData = await checkReq.json();
+                    
+                    if (checkData.status === 'complete') {
+                        // 修正讀取路徑：Marker 接口回傳的 markdown 通常在頂層或 result 內
+                        // 為了保險，我們檢查多個可能的位置
+                        const resultMd = checkData.markdown || (checkData.result ? checkData.result.markdown : null) || JSON.stringify(checkData);
+                        return resultMd;
+                    } else if (checkData.status === 'failed') {
+                        throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
+                    }
+                }
+            }
+            
+            // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
+            // 標頭模式轉發
+            
+            let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
+            let bodyObj = {};
+            
+            if(p === 'gemini') {
+                url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${k}`;
+                delete headers['Authorization']; 
+                
+                let bodyContent = { 
+                    system_instruction: { parts: [{ text: sysPrompt }] },
+                    contents: [] 
+                };
+                history.forEach(msg => {
+                    bodyContent.contents.push({
+                        role: msg.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: msg.content }]
+                    });
+                });
+                let currentParts = [];
+                if (file) {
+                    currentParts.push({ inline_data: { mime_type: mime || "image/jpeg", data: file } });
+                }
+                currentParts.push({ text: txt });
+                bodyContent.contents.push({ role: "user", parts: currentParts });
+                
+                bodyObj = bodyContent;
+            } 
+            else {
+                if (p === 'openrouter') {
+                    url = "https://openrouter.ai/api/v1/chat/completions";
+                    if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
+                } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
+                else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
+                else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
+                else url = "https://api.groq.com/openai/v1/chat/completions";
+
+                let messages = [];
+                messages.push({ role: "system", content: sysPrompt });
+                history.forEach(msg => {
+                    messages.push({ role: msg.role, content: msg.content });
+                });
+                let currentContent = [];
+                if (file) {
+                    currentContent.push({ type: "text", text: txt });
+                    currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
+                } else {
+                    currentContent = txt;
+                }
+                messages.push({ role: "user", content: currentContent });
+
+                bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
+            }
+
+            // --- 核心代理請求 ---
+            headers['X-Target-Url'] = url; 
+
+            const r = await fetch(USER_WORKER_URL, {
+                method: 'POST',
+                headers: headers, 
+                body: JSON.stringify(bodyObj), 
+                signal: sig
+            });
+
+            if(!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            
+            return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
+        }
     </script>
 </body>
 </html>
