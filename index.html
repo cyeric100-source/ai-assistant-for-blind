@@ -1271,7 +1271,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     outputArea.focus();
                 } catch(e) { window.reportError("Image Analysis Failed", e); }
             }
-        } // 關鍵修正：補上這個遺漏的括號！
+        } // End processReaderTool
 
         // --- Chat View Logic ---
         function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f) handleFileSelect(f); }); }
@@ -1498,6 +1498,13 @@ Directly provide the final, polished Traditional Chinese translation.`;
             b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
             b.className = s; 
             b.innerText = t; 
+        }
+
+        // [關鍵修復] 補回遺失的 updateVisualProgress 函式
+        function updateVisualProgress(show, text="") {
+            const el = document.getElementById('visual-progress');
+            if (show) { el.classList.add('active'); el.innerText = text; } 
+            else { el.classList.remove('active'); el.innerText = ""; }
         }
 
         function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
