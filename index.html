@@ -11,7 +11,7 @@
     <!-- 引入 DOMPurify 進行 HTML 消毒 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
-    <!-- 【核心設定】PDF.js v4.0.379 (使用穩定版本) -->
+    <!-- 【核心設定】PDF.js (本地 pdf-dist 版本) -->
     <script type="module">
         if (window.location.protocol === 'file:') {
             document.documentElement.innerHTML = `
@@ -25,19 +25,20 @@
             throw new Error("Local execution blocked.");
         }
 
-        const PDF_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs';
-        const WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+        // 修改為本地路徑
+        const PDF_BASE = './pdf-dist/pdf.mjs';
+        const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
         async function initPdfSystem() {
             try {
                 const pdfjsLib = await import(PDF_BASE);
                 window.pdfjsLib = pdfjsLib;
                 pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
-                console.log("PDF System Initialized");
+                console.log("PDF System Initialized (Local)");
                 window.dispatchEvent(new Event('pdfjs-loaded'));
             } catch (e) {
                 console.error("PDF Init Failed:", e);
-                window.reportError("PDF 核心載入失敗 (CDN)", e);
+                window.reportError("PDF 核心載入失敗 (Local)", e);
                 const btn = document.getElementById('pdf-start-btn');
                 if (btn) {
                     btn.innerText = "⚠️ 錯誤：PDF 核心失敗";
@@ -991,7 +992,13 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
             // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式 (Sequential Hybrid Processing)
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+            // 【本地化修正】加入 cMapUrl 和 standardFontDataUrl
+            const pdf = await window.pdfjsLib.getDocument({ 
+                data: arrayBuffer, 
+                cMapUrl: './pdf-dist/cmaps/',
+                cMapPacked: true,
+                standardFontDataUrl: './pdf-dist/standard_fonts/'
+            }).promise;
             
             updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
             
@@ -1387,7 +1394,14 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     if(selectedFile.type === 'application/pdf') {
                         // 嘗試簡單提取文字
                          const arrayBuffer = await selectedFile.arrayBuffer();
-                         const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/cmaps/', cMapPacked: true }).promise;
+                         // 【本地化修正】加入 cMapUrl 和 standardFontDataUrl
+                         const pdf = await window.pdfjsLib.getDocument({ 
+                             data: arrayBuffer, 
+                             cMapUrl: './pdf-dist/cmaps/',
+                             cMapPacked: true,
+                             standardFontDataUrl: './pdf-dist/standard_fonts/'
+                         }).promise;
+                         
                          let pdfText = "";
                          for (let i = 1; i <= pdf.numPages; i++) {
                              const content = await pdf.getPage(i).then(p => p.getTextContent());
