@@ -447,15 +447,20 @@
                     <select id="provider-select" onchange="handleProviderChange(true)">
                         <option value="gemini">Google Gemini (推薦)</option>
                         <option value="openrouter">OpenRouter (推薦)</option>
-                        <option value="datalab">Datalab (Chandra OCR)</option>
+                        <!-- Datalab 已移除，改為獨立 Key 輸入 -->
                         <option value="openai">OpenAI</option>
                         <option value="groq">Groq</option>
                         <option value="mistral">Mistral AI</option>
                         <option value="perplexity">Perplexity</option>
                     </select>
 
-                    <label>API Key:</label>
+                    <label>API Key (主要服務商):</label>
                     <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
+                    
+                    <div style="margin: 15px 0; border-top: 1px dashed #333; padding-top: 15px;">
+                        <label>Chandra OCR API Key (Datalab 專用):</label>
+                        <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
+                    </div>
                     
                     <label>模型過濾:</label>
                     <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選..." oninput="handleModelFilter()">
@@ -1018,6 +1023,9 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     document.getElementById('provider-select').value = 'gemini'; 
                 }
                 
+                // 載入 Datalab Key
+                document.getElementById('datalab-key').value = localStorage.getItem('datalab_key') || "";
+                
                 handleProviderChange(false); 
                 initPasteImage();
                 initDragAndDrop();
@@ -1432,7 +1440,8 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 
                 let bodyContent = { 
                     system_instruction: { parts: [{ text: sysPrompt }] },
-                    contents: [] 
+                    contents: [],
+                    tools: [{ google_search: {} }] 
                 };
                 history.forEach(msg => {
                     bodyContent.contents.push({
@@ -1586,7 +1595,12 @@ Directly provide the final, polished Traditional Chinese translation.`;
             localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+            
+            // Save active provider key
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
+            // Save dedicated Datalab key
+            localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
+            
             localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
