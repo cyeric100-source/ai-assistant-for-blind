@@ -38,7 +38,7 @@
             } catch (e) {
                 console.error("PDF Init Failed:", e);
                 window.reportError("PDF 核心載入失敗 (Local)", e);
-                const btn = document.getElementById('pdf-start-btn');
+                const btn = document.getElementById('reader-start-btn');
                 if (btn) {
                     btn.innerText = "⚠️ 錯誤：PDF 核心失敗";
                     btn.classList.add('danger');
@@ -64,6 +64,10 @@
             --tool-bg: #112233;
             --nav-bg: #111;
             --nav-active-bg: #333;
+            --segment-bg: #222;
+            --segment-active: #FFFF00;
+            --segment-text: #fff;
+            --segment-active-text: #000;
         }
 
         /* 全局重置與佈局 */
@@ -197,13 +201,34 @@
         button.high-contrast { background-color: #FFD700; color: #000; border: 2px solid #FFF; font-size: 1.2rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* OCR 結果區專用樣式 */
-        #quick-ocr-output {
-            background: #111; border: 2px solid #444; border-radius: 8px;
-            padding: 15px; min-height: 100px; margin-top: 10px;
-            white-space: pre-wrap; word-break: break-word;
+        /* 分段式控制 (Segmented Control) */
+        .segmented-control {
+            display: flex; background: var(--segment-bg); padding: 4px;
+            border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--border-color);
         }
-        #quick-ocr-output:focus { outline: 3px solid var(--accent-color); background: #222; }
+        .segmented-control label {
+            flex: 1; text-align: center; padding: 10px 5px; cursor: pointer;
+            border-radius: 6px; font-size: 0.95rem; color: var(--segment-text);
+            transition: all 0.2s; user-select: none;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .segmented-control input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
+        .segmented-control input[type="radio"]:checked + label {
+            background: var(--segment-active); color: var(--segment-active-text);
+            font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .segmented-control label:focus-within { outline: 3px solid #fff; }
+
+        /* Reader 結果區 */
+        #reader-output-area {
+            background: #111; border: 2px solid #444; border-radius: 8px;
+            padding: 15px; min-height: 100px; margin-top: 20px;
+            white-space: pre-wrap; word-break: break-word; outline: none;
+        }
+        #reader-output-area:focus { outline: 3px solid var(--accent-color); background: #1a1a1a; }
+        .reader-page-block {
+            border-bottom: 1px dashed #555; padding-bottom: 20px; margin-bottom: 20px;
+        }
 
         /* 對話氣泡樣式 */
         .message {
@@ -362,45 +387,48 @@
             </div>
         </section>
 
-        <!-- B. 工具視圖 (Tools View) -->
+        <!-- B. 工具視圖 (Tools View - Reader) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
             <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
             
-            <!-- 新增：快速 OCR 功能區塊 -->
-            <div class="settings-card" style="border-color: var(--accent-color);">
-                <h3>📸 Chandra OCR</h3>
-                <input type="file" id="quick-ocr-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleQuickOCRFileSelect()">
-                
-                <button type="button" id="quick-ocr-btn" class="action-btn high-contrast" onclick="triggerQuickOCR()">
-                    📸 拍攝 / 取得文字 (強制使用 Chandra)
-                </button>
-                <p style="font-size:0.9rem; color:#aaa;">* 按 Alt + O 快速啟動。結果將直接顯示於下方。</p>
-                
-                <!-- 結果顯示區，支援焦點導航 -->
-                <div id="quick-ocr-output" role="region" aria-label="文字識別結果" tabindex="-1">
-                    (等待拍攝...)
+            <div class="settings-card" style="border-top: 3px solid var(--accent-color);">
+                <h3>1. 選擇識別模式</h3>
+                <div class="segmented-control" role="group" aria-label="識別模式選擇">
+                    <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra">
+                    <label for="mode-chandra">Chandra<br>(整份)</label>
+                    
+                    <input type="radio" name="ocr-mode" id="mode-hybrid" value="hybrid" checked>
+                    <label for="mode-hybrid">混合模式<br>(逐頁)</label>
+                    
+                    <input type="radio" name="ocr-mode" id="mode-visual" value="visual">
+                    <label for="mode-visual">純視覺<br>(逐頁)</label>
                 </div>
-                <!-- Reader 頁面的匯出 -->
-                <button type="button" class="action-btn secondary" style="margin-top:10px;" onclick="exportManager.openMenu(null, 'reader')">📤 匯出結果</button>
-            </div>
+                <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">* Chandra 適合快速提取整份文件；混合模式適合精準校對。</p>
 
-            <div class="settings-card">
-                <h3>📄 俗業讀取 (General Reader)</h3>
-                <p style="color:#aaa; font-size:0.9rem;">
-                    2025 新功能：結合「文字層」與「視覺 AI」進行逐頁校對。
-                    即使超過 100 頁也能完整輸出不遺漏。
-                </p>
-                <input type="file" id="pdf-tool-input" class="visually-hidden" accept="application/pdf" onchange="handlePDFToolFileSelect()">
+                <h3>2. 選擇檔案與執行</h3>
+                <!-- 單一上傳入口 -->
+                <input type="file" id="reader-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleReaderFileSelect()">
                 
-                <button type="button" id="pdf-start-btn" class="action-btn" onclick="document.getElementById('pdf-tool-input').click()" disabled>
-                    選擇 PDF 檔案並分析
+                <button type="button" id="reader-start-btn" class="action-btn high-contrast" onclick="document.getElementById('reader-input').click()">
+                    📷 拍照 / 選擇文件
                 </button>
                 
                 <div style="margin-top:10px;">
                     <label class="check-btn">
-                        <input type="checkbox" id="pdf-translate"> <span>OCR 後翻譯成繁體中文</span>
+                        <input type="checkbox" id="reader-translate"> <span>OCR 後翻譯成繁體中文</span>
                     </label>
                 </div>
+            </div>
+
+            <!-- 結果顯示與操作區 -->
+            <div id="reader-result-wrapper" class="hidden">
+                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px;">
+                    <h3 style="margin:0;">識別結果：</h3>
+                    <button type="button" class="action-btn secondary" style="width:auto; margin:0; padding:8px 15px;" onclick="exportManager.openMenu(null, 'reader')">📤 匯出 / 複製</button>
+                </div>
+                
+                <!-- 結果輸出容器，支援焦點導航 -->
+                <div id="reader-output-area" role="region" aria-label="文字識別結果內容" tabindex="-1"></div>
             </div>
         </section>
 
@@ -508,11 +536,14 @@
         <div id="export-modal">
             <h2 id="export-title">匯出選項 (Export)</h2>
             <div class="export-btn-group">
+                <button type="button" id="exp-copy-to-chat" class="hidden" onclick="exportManager.copyToChat()">
+                    <span class="icon">💬</span> 複製到對話輸入框
+                </button>
                 <button type="button" id="exp-copy-last" onclick="exportManager.copyLast()">
                     <span class="icon">📋</span> 複製最後回應
                 </button>
                 <button type="button" onclick="exportManager.copyAll()">
-                    <span class="icon">📑</span> 複製完整對話
+                    <span class="icon">📑</span> 複製完整對話 / 全文
                 </button>
                 <button type="button" onclick="exportManager.downloadHTML()">
                     <span class="icon">🌐</span> 下載為 HTML (網頁)
@@ -573,9 +604,21 @@
             openMenu(triggerId, mode = 'chat') {
                 this.triggerElementId = triggerId;
                 this.sourceMode = mode;
+                
+                // 動態顯示/隱藏 "複製到對話" 按鈕
+                const copyToChatBtn = document.getElementById('exp-copy-to-chat');
+                if (mode === 'reader') {
+                    copyToChatBtn.classList.remove('hidden');
+                } else {
+                    copyToChatBtn.classList.add('hidden');
+                }
+
                 this.modalOverlay.style.display = 'flex';
-                // 焦點管理：開啟時聚焦第一個按鈕
-                setTimeout(() => document.getElementById('exp-copy-last').focus(), 100);
+                // 焦點管理：開啟時聚焦第一個可見按鈕
+                setTimeout(() => {
+                    if (mode === 'reader') copyToChatBtn.focus();
+                    else document.getElementById('exp-copy-last').focus();
+                }, 100);
             }
 
             closeMenu() {
@@ -591,7 +634,7 @@
             getContentData() {
                 // 如果是 Reader 模式，直接抓取 DOM 文字
                 if (this.sourceMode === 'reader') {
-                    const el = document.getElementById('quick-ocr-output');
+                    const el = document.getElementById('reader-output-area');
                     const text = el ? el.innerText : "";
                     const html = el ? el.innerHTML : "";
                     return {
@@ -625,6 +668,21 @@
                         html: el.innerHTML
                     };
                 }
+            }
+
+            copyToChat() {
+                const data = this.getContentData();
+                if (!data.text) return showTransientStatus("無內容可複製", 'error');
+                
+                // 切換到 Chat 頁面並填入
+                switchTab('chat');
+                const inputBox = document.getElementById('user-input');
+                inputBox.value = data.text;
+                inputBox.focus();
+                inputBox.selectionStart = inputBox.selectionEnd = data.text.length; // 游標移到最後
+                
+                this.closeMenu();
+                showTransientStatus("內容已貼上至輸入框，請按 Enter 發送");
             }
 
             copyLast() {
@@ -677,7 +735,8 @@
                     });
                 } else {
                     // 否則使用 DOM，但進行清洗
-                    const clone = document.getElementById('chat-output').cloneNode(true);
+                    let sourceId = this.sourceMode === 'reader' ? 'reader-output-area' : 'chat-output';
+                    const clone = document.getElementById(sourceId).cloneNode(true);
                     // 移除所有按鈕和腳本
                     clone.querySelectorAll('button, script, style').forEach(el => el.remove());
                     bodyContent = clone.innerHTML;
@@ -698,7 +757,7 @@
     </style>
 </head>
 <body>
-    <h1>對話紀錄匯出</h1>
+    <h1>紀錄匯出 (${new Date().toLocaleString()})</h1>
     <hr style="border-color:#333;">
     ${bodyContent}
 </body>
@@ -724,7 +783,7 @@
 
         const exportManager = new ExportManager();
 
-        // --- 核心 3: 原始邏輯保留 ---
+        // --- 核心 3: 原始邏輯保留與增強 ---
         
         class UniversalTextNormalizer {
             static getScriptType(char) {
@@ -775,11 +834,7 @@
         };
 
         window.addEventListener('pdfjs-loaded', () => {
-            const btn = document.getElementById('pdf-start-btn');
-            if (btn) {
-                btn.innerText = "📄 選擇 PDF 檔案並分析";
-                btn.disabled = false;
-            }
+            // PDF Loaded Signal
             showReadyStatus();
         });
 
@@ -800,7 +855,6 @@ Regardless of the task, you must strictly adhere to the following three major pr
 3. **Content Style**:
    - Provided the information is rich, the text must be concise and refined, avoiding redundancy. The main points must be placed at the very beginning.`;
 
-        // 【更新】第一專屬指令：混合模式 (文字+圖片)
         const HYBRID_PROMPT = `# SYSTEM ROLE
 You are a specialized "Hybrid OCR & Accessibility Engine" for visually impaired users.
 You will receive two inputs for a single PDF page:
@@ -829,7 +883,6 @@ Reconstruct the page content into perfect **Markdown** format by cross-referenci
 # OUTPUT
 Output ONLY the final Markdown content. No conversational filler (e.g., "Here is the text").`;
 
-        // 【更新】第二專屬指令：純視覺模式 (僅圖片)
         const VISUAL_PROMPT = `# SYSTEM ROLE
 You are a high-precision "Visual OCR Expert" for visually impaired users.
 You will receive a **Page Image**.
@@ -856,7 +909,6 @@ Visually recognize and transcribe all text from the image into **Markdown**, and
 # OUTPUT
 Output ONLY the final Markdown content. Do not output code blocks (\`\`\`markdown) wrapper, just the raw content.`;
         
-        // 為了相容設定介面的 "DEFAULT_OCR_PROMPT"，我們先用 HYBRID 填充，但實際執行會動態切換
         const DEFAULT_OCR_PROMPT = HYBRID_PROMPT;
         
         const DEFAULT_TRANSLATE_PROMPT = `# ROLE
@@ -914,8 +966,8 @@ Directly provide the final, polished Traditional Chinese translation.`;
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
             
-            if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
-            if (key === 'e') { e.preventDefault(); exportManager.openMenu(); return; } // 新增：Alt+E 匯出
+            if (key === 'o') { e.preventDefault(); switchTab('tools'); document.getElementById('reader-input').click(); return; }
+            if (key === 'e') { e.preventDefault(); exportManager.openMenu(); return; } 
 
             const actions = {
                 's': () => switchTab('settings'),
@@ -985,65 +1037,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             } catch (e) { window.reportError("Init Error", e); }
         });
 
-        function triggerQuickOCR() {
-            switchTab('tools');
-            document.getElementById('quick-ocr-input').click();
-        }
-
-        async function handleQuickOCRFileSelect() {
-            const input = document.getElementById('quick-ocr-input');
-            const file = input.files[0];
-            if (!file) return;
-            
-            // 強制檢查 Datalab Key
-            const datalabKey = localStorage.getItem('datalab_key');
-            if (!datalabKey) {
-                alert("⚠️ 錯誤：快速 OCR 必須使用 Chandra (Datalab) 引擎。\n\n請先到「設定」頁面選擇 'Datalab' 並輸入 API Key，然後再試一次。");
-                switchTab('settings');
-                // 自動切換到 Datalab 選項方便使用者
-                document.getElementById('provider-select').value = 'datalab';
-                handleProviderChange(true);
-                return;
-            }
-
-            const outputDiv = document.getElementById('quick-ocr-output');
-            outputDiv.innerHTML = '<p>正在透過 Chandra OCR 進行分析，請稍候...</p>';
-            outputDiv.focus(); 
-            
-            updateStatusBar("正在識別文字 (Chandra)...", "busy");
-            playAudioCue('start');
-
-            try {
-                let fileData = await readFileAsBase64(file);
-                
-                // 強制使用 Datalab 呼叫
-                const res = await callAI(
-                    'datalab', 
-                    DEFAULT_OCR_PROMPT, 
-                    [], 
-                    "", 
-                    fileData,
-                    file.type, 
-                    null,
-                    'chandra',
-                    datalabKey
-                );
-                
-                const safeHTML = DOMPurify.sanitize(marked.parse(res));
-                outputDiv.innerHTML = safeHTML;
-                
-                playAudioCue('success');
-                outputDiv.focus();
-                updateStatusBar("識別完成");
-                
-            } catch (e) {
-                window.reportError("Quick OCR Failed", e);
-                outputDiv.innerHTML = `<p style="color:#ff5555; font-weight:bold;">⚠️ 識別失敗：${e.message}</p>`;
-                outputDiv.focus();
-            }
-            input.value = '';
-        }
-
         function switchPromptEditor(mode) {
             const textarea = document.getElementById('system-prompt');
             memoryPrompts[currentEditingMode] = textarea.value;
@@ -1112,14 +1105,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             showTransientStatus("對話與記憶已清除");
         }
 
-        function handlePDFToolFileSelect() {
-            const input = document.getElementById('pdf-tool-input');
-            if (input.files.length > 0) {
-                processPDFTool(input.files[0]);
-            }
-            input.value = ""; 
-        }
-        
         function isCanvasBlank(canvas) {
             try {
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -1132,313 +1117,166 @@ Directly provide the final, polished Traditional Chinese translation.`;
             } catch(e) { return false; }
         }
 
-        async function processPDFTool(file) {
-            if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
-            if (!file || file.type !== 'application/pdf') { alert("請選擇 PDF"); return; }
-            
-            resetConversation(); playAudioCue('start');
-            switchTab('chat');
-            
-            const needTranslate = document.getElementById('pdf-translate').checked;
-
-            try {
-                updateStatusBar("正在初始化混合閱讀模式...", "busy");
-                // 改為全新的混合處理模式
-                await performHybridAIProcessing(file, needTranslate);
-
-            } catch (e) { window.reportError("PDF Process Failed", e); }
+        // --- Reader View Logic ---
+        function handleReaderFileSelect() {
+            const input = document.getElementById('reader-input');
+            if (input.files.length > 0) {
+                processReaderTool(input.files[0]);
+            }
+            input.value = "";
         }
 
-        async function performHybridAIProcessing(file, needTranslate) {
-            const controller = new AbortController(); 
-            let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-            let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
-            let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+        async function processReaderTool(file) {
+            if (!file) return;
+
+            // 1. 取得模式
+            const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
+            const needTranslate = document.getElementById('reader-translate').checked;
             
-            if (!ocrApiKey) throw new Error(`缺少 ${ocrProvider} Key`);
-
-            // 如果使用者選了 Datalab (Chandra)，使用其專屬的 Whole-File OCR
-            if (ocrProvider === 'datalab') {
-                 updateStatusBar("上傳整份文件至 Chandra OCR...", "busy");
-                 let fileData = await readFileAsBase64(file);
-                 let fullText = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, "application/pdf", controller.signal, 'chandra', ocrApiKey);
-                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(fullText));
-                 setTimeout(() => aiMsg.focus(), 100);
-                 updateStatusBar("完成");
-                 playAudioCue('success');
-                 return;
-            }
-
-            // 一般 AI (Gemini/OpenAI): 採用逐頁混合模式 (Sequential Hybrid Processing)
-            const arrayBuffer = await file.arrayBuffer();
-            // 【本地化修正】加入 cMapUrl 和 standardFontDataUrl
-            const pdf = await window.pdfjsLib.getDocument({ 
-                data: arrayBuffer, 
-                cMapUrl: './pdf-dist/cmaps/',
-                cMapPacked: true,
-                standardFontDataUrl: './pdf-dist/standard_fonts/'
-            }).promise;
+            // 介面重置
+            const outputArea = document.getElementById('reader-output-area');
+            outputArea.innerHTML = "";
+            document.getElementById('reader-result-wrapper').classList.remove('hidden');
+            outputArea.focus(); // 讓讀屏者知道開始了
             
-            updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
-            
-            // 建立一個即時顯示容器，因為我們要串流顯示每一頁
-            const containerDiv = document.createElement('div');
-            containerDiv.className = `message assistant`;
-            containerDiv.innerHTML = `<h1 class="msg-heading">AI 助理 (即時處理中)：</h1><div class="markdown-body" id="streaming-output"></div>`;
-            document.getElementById('chat-output').appendChild(containerDiv);
-            const outputArea = containerDiv.querySelector('#streaming-output');
+            playAudioCue('start');
 
-            let fullAccumulatedText = "";
-
-            for (let i = 1; i <= pdf.numPages; i++) {
-                updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
-                document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
-
-                // 1. 取得 Text Layer (文字提示)
-                const page = await pdf.getPage(i);
-                let textLayerContent = "";
-                let hasExtractedText = false;
+            // 2. Chandra 模式 (整份處理)
+            if (mode === 'chandra') {
+                const datalabKey = localStorage.getItem('datalab_key');
+                if (!datalabKey) {
+                    alert("請先設定 Chandra (Datalab) API Key");
+                    switchTab('settings');
+                    return;
+                }
+                updateStatusBar("上傳整份文件至 Chandra...", "busy");
                 
                 try {
-                    const textContent = await page.getTextContent();
-                    textLayerContent = textContent.items.map(item => item.str).join(" ");
+                    const fileData = await readFileAsBase64(file);
+                    const res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, null, 'chandra', datalabKey);
                     
-                    // --- 增強驗證邏輯：清洗與驗證 ---
-                    const totalLen = textLayerContent.length;
-                    
-                    // 條件 1: 長度必須 <= 8000 且 > 20 (避免極短或極長的文字)
-                    if (totalLen > 20 && totalLen <= 8000) {
-                        
-                        // 條件 2: 垃圾字符比例檢查 (Garbage Ratio Check)
-                        // 有效字符定義：中日韓、英文、數字、空白、標準標點符號
-                        const validMatches = textLayerContent.match(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\w\s.,?!:;"'()\[\]{}+-=%$#@]/g) || [];
-                        const validCount = validMatches.length;
-                        const garbageRatio = 1 - (validCount / totalLen);
-
-                        // 只有當亂碼比例小於 30% 時，才視為有效
-                        if (garbageRatio < 0.3) {
-                             hasExtractedText = true;
-                        } else {
-                             console.warn(`Page ${i}: Garbage ratio too high (${(garbageRatio*100).toFixed(1)}%). Fallback to visual mode.`);
-                        }
-                    } else if (totalLen > 8000) {
-                        console.warn(`Page ${i}: Text too long (${totalLen}). Fallback to visual mode.`);
-                    }
-                    // -----------------------------
-
-                } catch (e) { console.warn(`Page ${i} text extraction failed`, e); }
-
-                // 2. 取得 Visual Layer (壓縮圖片)
-                const viewportRaw = page.getViewport({ scale: 1.0 });
-                // 使用 2.0 倍率以確保文字清晰，但限制最大維度以防 OOM
-                const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
-                let canvas = document.createElement('canvas');
-                canvas.width = page.getViewport({ scale }).width; 
-                canvas.height = page.getViewport({ scale }).height;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
-                
-                if (isCanvasBlank(canvas)) {
-                    canvas.remove();
-                    continue; // 空白頁跳過
-                }
-                
-                // 轉為 JPEG 格式，品質 0.8，平衡清晰度與封包大小
-                let imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-                // 3. 根據提取結果選擇專屬指令 (Branching Logic)
-                let selectedSystemPrompt = "";
-                let userPromptContent = "";
-
-                if (hasExtractedText) {
-                    // 情況 A: 成功獲取有效字符 -> 使用混合模式 (Hybrid Prompt)
-                    // 將提取的亂碼/文字作為 "Raw Text" 傳入，並附上圖片
-                    selectedSystemPrompt = HYBRID_PROMPT;
-                    userPromptContent = `[Page ${i} Raw Text Start]\n${textLayerContent.substring(0, 8000)}\n[Page ${i} Raw Text End]\n\nPlease process this page according to the Hybrid rules.`;
-                } else {
-                    // 情況 B: 獲取失敗 (純圖/掃描/亂碼過多/文字過長) -> 使用純視覺模式 (Visual Prompt)
-                    // 僅指示 AI 閱讀圖片
-                    selectedSystemPrompt = VISUAL_PROMPT;
-                    userPromptContent = `[Page ${i}]\nThis page has no extractable text layer (or text is corrupted). Please perform strict Visual OCR on the image.`;
-                }
-
-                // 如果用戶勾選了翻譯，我們在 User Prompt 尾端再強調一次，雖然 System Prompt 已包含
-                if (needTranslate) {
-                    userPromptContent += "\n\nREMINDER: Translate the output into Traditional Chinese (Hong Kong).";
-                }
-
-                try {
-                    // 4. 呼叫 AI
-                    let pageResult = await callAI(
-                        ocrProvider, 
-                        selectedSystemPrompt, 
-                        [], // No history for OCR pages to save context window
-                        userPromptContent, 
-                        imgBase64, 
-                        "image/jpeg", 
-                        controller.signal, 
-                        ocrModel, 
-                        ocrApiKey
-                    );
-                    
-                    // 格式化輸出
-                    let cleanResult = UniversalTextNormalizer.normalize(pageResult);
-                    fullAccumulatedText += `${cleanResult}\n\n`;
-                    
-                    // 追加節點模式 (Append Node)
-                    const pageNode = document.createElement('div');
-                    pageNode.className = 'new-page';
-                    pageNode.style.marginBottom = "20px";
-                    pageNode.style.borderBottom = "1px dashed #444";
-                    pageNode.style.paddingBottom = "20px";
-                    // 加上頁碼標示，方便閱讀
-                    pageNode.innerHTML = `<h3>Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(cleanResult));
-                    outputArea.appendChild(pageNode);
-                    
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
+                    playAudioCue('success');
+                    updateStatusBar("識別完成");
+                    outputArea.focus(); // 完成後聚焦結果
                 } catch (e) {
-                    console.error(`Page ${i} AI Error:`, e);
-                    const errorNode = document.createElement('div');
-                    errorNode.innerHTML = `<p style="color:red">Page ${i} Error: ${e.message}</p>`;
-                    outputArea.appendChild(errorNode);
-                } finally {
-                    // 5. 記憶體釋放 (Critical for long PDFs)
-                    canvas.remove();
-                    canvas = null;
-                    imgBase64 = null;
+                    window.reportError("Chandra OCR Failed", e);
                 }
-
-                // 6. 分頁延遲 (Stability Delay)
-                // Gemini 2.5 Flash 雖然快，但為了避免瞬間並發導致瀏覽器卡頓或 API 429，保留短暫緩衝
-                if (ocrProvider === 'gemini') {
-                    await sleep(6000); // 6秒
-                } else {
-                    await sleep(500); // 其他模型 0.5秒
-                }
+                return;
             }
 
-            updateVisualProgress(false);
-            updateStatusBar("文件處理完成");
-            playAudioCue('success');
-            containerDiv.focus();
+            // 3. 逐頁模式 (Hybrid 或 Visual)
+            if (file.type === 'application/pdf') {
+                if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
+                
+                try {
+                    updateStatusBar("初始化 PDF 引擎...", "busy");
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await window.pdfjsLib.getDocument({ 
+                        data: arrayBuffer, 
+                        cMapUrl: './pdf-dist/cmaps/', 
+                        cMapPacked: true, 
+                        standardFontDataUrl: './pdf-dist/standard_fonts/'
+                    }).promise;
+
+                    updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
+                    const controller = new AbortController();
+
+                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+                    let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
+                        document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
+
+                        const page = await pdf.getPage(i);
+                        let promptToUse = VISUAL_PROMPT;
+                        let promptContent = "";
+                        let imgBase64 = null;
+
+                        // 截圖 (所有模式都需要)
+                        const viewportRaw = page.getViewport({ scale: 1.0 });
+                        const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = page.getViewport({ scale }).width;
+                        canvas.height = page.getViewport({ scale }).height;
+                        await page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale }) }).promise;
+                        
+                        if (!isCanvasBlank(canvas)) {
+                            imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                        }
+                        
+                        // Hybrid 模式嘗試提取文字
+                        if (mode === 'hybrid') {
+                            try {
+                                const textContent = await page.getTextContent();
+                                const textLayer = textContent.items.map(item => item.str).join(" ");
+                                if (textLayer.length > 20 && textLayer.length < 8000) {
+                                    promptToUse = HYBRID_PROMPT;
+                                    promptContent = `[Page ${i} Raw Text Start]\n${textLayer}\n[Page ${i} Raw Text End]\n\nProcess with Hybrid rules.`;
+                                } else {
+                                    promptContent = `[Page ${i}]\nNo usable text layer. Visual Only.`;
+                                }
+                            } catch (e) { promptContent = `Visual Only (Error)`; }
+                        } else {
+                            promptContent = `[Page ${i}]\nVisual Mode Only.`;
+                        }
+
+                        if (needTranslate) promptContent += "\n\nTranslate to Traditional Chinese (Hong Kong).";
+
+                        if (imgBase64) {
+                            try {
+                                const pageRes = await callAI(ocrProvider, promptToUse, [], promptContent, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                                
+                                // 創建結果區塊
+                                const pageBlock = document.createElement('div');
+                                pageBlock.className = 'reader-page-block';
+                                const pageId = `reader-page-${i}`;
+                                pageBlock.innerHTML = `<h3 id="${pageId}" tabindex="-1">Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(pageRes));
+                                outputArea.appendChild(pageBlock);
+
+                                // 焦點管理：第一頁完成時聚焦，讓讀屏讀出
+                                if (i === 1) {
+                                    document.getElementById(pageId).focus();
+                                }
+
+                            } catch (e) {
+                                outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message}</p></div>`;
+                            }
+                        }
+                        
+                        // 釋放記憶體
+                        canvas.remove();
+                        if (ocrProvider === 'gemini') await sleep(4000); else await sleep(500);
+                    }
+
+                    // 全部完成，焦點回到最上層
+                    updateVisualProgress(false);
+                    updateStatusBar("處理完成");
+                    playAudioCue('success');
+                    outputArea.focus();
+
+                } catch (e) { window.reportError("Reader Process Failed", e); }
+            } else if (file.type.startsWith('image/')) {
+                // 單張圖片處理
+                updateStatusBar("正在分析圖片...", "busy");
+                try {
+                    let imgBase64 = await readFileAsBase64(file);
+                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
+                    let res = await callAI(ocrProvider, VISUAL_PROMPT, [], "Analyze this image.", imgBase64, file.type, null);
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
+                    playAudioCue('success');
+                    updateStatusBar("完成");
+                    outputArea.focus();
+                } catch(e) { window.reportError("Image Analysis Failed", e); }
+            }
         }
 
-        function updateVisualProgress(show, text="") {
-            const el = document.getElementById('visual-progress');
-            if (show) { el.classList.add('active'); el.innerText = text; } 
-            else { el.classList.remove('active'); el.innerText = ""; }
-        }
-
-        // 已移除 extractTextFromPDF_Accurate 及其輔助函式 (由 AI 全權處理排版)
-
-        function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
+        // --- Chat View Logic ---
+        function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f) handleFileSelect(f); }); }
         function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
         function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
-        
-        function updateStatusBar(t, s='ready') { 
-            const b = document.getElementById('status-bar'); 
-            b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
-            b.className = s; 
-            b.innerText = t; 
-        }
-
-        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
-        function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
-        
-        function addMessage(role, content) {
-            const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
-            div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
-            document.getElementById('chat-output').appendChild(div); 
-            return div;
-        }
-        
-        function handleProviderChange(save=true) {
-            const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
-            document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
-            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
-            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
-            
-            const orSet = document.getElementById('openrouter-settings');
-            if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
-            
-            allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
-            handleModelFilter();
-            currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
-            document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
-            if(save) localStorage.setItem('provider', p);
-            showReadyStatus();
-        }
-        function handleModelFilter() {
-            const f = document.getElementById('model-filter-input').value.toLowerCase();
-            updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
-        }
-        function updateModelSelect(list, active) {
-            const s = document.getElementById('model-select'); s.innerHTML = "";
-            let found = false;
-            list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
-            s.appendChild(new Option("自行輸入...", "CUSTOM"));
-            const w = document.getElementById('custom-model-wrapper');
-            if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
-        }
-        
-        async function fetchOnlineModels() {
-            const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
-            if(!k && p!=='openrouter') return alert("需 API Key");
-            const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
-            try {
-                let list=[];
-                if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
-                else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
-                else if(p==='datalab') return; 
-                else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
-                
-                if(list && list.length > 0) { 
-                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
-                    allCurrentModels=list; 
-                    handleModelFilter(); 
-                    showTransientStatus("模型清單已更新並儲存"); 
-                } else {
-                    throw new Error("找不到可用模型");
-                }
-            } catch(e) { window.reportError("更新失敗", e); } 
-            finally { btn.innerText="更新"; btn.disabled=false; }
-        }
-
-        function handleModelSelectChange() {
-            const s = document.getElementById('model-select');
-            if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
-            else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
-        }
-        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); }
-        
-        function saveSettings() {
-            const p = document.getElementById('provider-select').value;
-            const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
-            memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
-            localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
-            localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
-            localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
-            localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
-            localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
-            localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
-            localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
-            localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            showTransientStatus("設定已儲存");
-            switchTab(lastActiveTabId || 'chat');
-        }
-
-        function restoreDefaults() {
-            const p = document.getElementById('provider-select').value; 
-            memoryPrompts.chat = PROVIDERS[p].prompt;
-            memoryPrompts.ocr = DEFAULT_OCR_PROMPT;
-            memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
-            localStorage.removeItem(`${p}_prompt`);
-            localStorage.removeItem('custom_prompt_ocr');
-            localStorage.removeItem('custom_prompt_translate');
-            document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
-            handleProviderChange(true); 
-            showTransientStatus("已還原預設值");
-        }
-
-        function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("日誌已複製")); }
         
         async function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
@@ -1447,9 +1285,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 document.getElementById('upload-btn').innerText = `已選: ${f.name.substring(0,8)}...`;
                 document.getElementById('upload-btn').classList.add('active'); 
                 
-                if (f.type === 'application/pdf') {
-                }
-
                 const isPaused = document.getElementById('pause-send').checked;
                 if (!isPaused) {
                     showTransientStatus("即將自動發送...");
@@ -1482,30 +1317,12 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 let mime = null;
 
                 if(selectedFile) {
-                    // PDF 處理邏輯已變更：直接讀取純文字供 AI 參考，不再進行複雜排版提取
+                    // Chat View PDF Logic Split: Direct Send (No PDF.js)
                     if(selectedFile.type === 'application/pdf') {
-                        // 嘗試簡單提取文字
-                         const arrayBuffer = await selectedFile.arrayBuffer();
-                         // 【本地化修正】加入 cMapUrl 和 standardFontDataUrl
-                         const pdf = await window.pdfjsLib.getDocument({ 
-                             data: arrayBuffer, 
-                             cMapUrl: './pdf-dist/cmaps/',
-                             cMapPacked: true,
-                             standardFontDataUrl: './pdf-dist/standard_fonts/'
-                         }).promise;
-                         
-                         let pdfText = "";
-                         for (let i = 1; i <= pdf.numPages; i++) {
-                             const content = await pdf.getPage(i).then(p => p.getTextContent());
-                             const str = content.items.map(item => item.str).join(" ");
-                             pdfText += `[Page ${i}]\n${str}\n\n`;
-                         }
-                         
-                        if(pdfText) { 
-                            const cleanPdfText = UniversalTextNormalizer.normalize(pdfText);
-                            input = `[文件內容]:\n${cleanPdfText}\n\n[用戶提問]:\n${txt}`;
-                            stickyMemory = { type: 'text', content: cleanPdfText, count: 3 };
-                        }
+                        fileData = await readFileAsBase64(selectedFile);
+                        mime = 'application/pdf';
+                        input = txt || "請分析這份 PDF 文件。"; // 如果用戶沒打字，給個預設指令
+                        stickyMemory = { type: 'pdf', content: null, mime: 'application/pdf', count: 0 }; // PDF 不做黏性記憶，因太大
                     } 
                     else if (selectedFile.type.startsWith('image/')) {
                         fileData = await readFileAsBase64(selectedFile); 
@@ -1564,8 +1381,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             if(!k) throw new Error("需 API Key");
 
-            // --- 區塊 1: Chandra OCR (Datalab) 專用邏輯 [修正版] ---
-            // 改用 Marker 接口以取得正確的 Markdown 格式
+            // --- 區塊 1: Chandra OCR (Datalab) 專用 ---
             if (p === 'datalab') {
                 if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
                 
@@ -1579,59 +1395,34 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
                 const formData = new FormData();
                 formData.append('file', blob);
-                formData.append('output_format', 'markdown'); // 強制輸出 Markdown
+                formData.append('output_format', 'markdown'); 
                 
-                // 改為使用 Marker 接口 (Marker 是 Chandra 的文件處理核心)
                 const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
-                    headers: { 
-                        'X-Api-Key': k,
-                        'X-Target-Url': 'https://www.datalab.to/api/v1/marker' // 修正為 Marker
-                    },
+                    headers: { 'X-Api-Key': k, 'X-Target-Url': 'https://www.datalab.to/api/v1/marker' },
                     body: formData,
                     signal: sig
                 });
                 
-                if (!postReq.ok) {
-                    const errText = await postReq.text();
-                    throw new Error(`Datalab Upload Failed: ${errText}`);
-                }
-                
+                if (!postReq.ok) throw new Error(await postReq.text());
                 const postData = await postReq.json();
-                const requestId = postData.request_id;
                 
                 while (true) {
-                    if (sig && sig.aborted) throw new Error("使用者取消操作");
-                    
+                    if (sig && sig.aborted) throw new Error("已取消");
                     await new Promise(r => setTimeout(r, 1000));
-                    
                     const checkReq = await fetch(USER_WORKER_URL, {
                         method: 'GET', 
-                        headers: { 
-                            'X-Api-Key': k,
-                            'X-Target-Url': `https://www.datalab.to/api/v1/marker/${requestId}` // 修正為 Marker 查詢
-                        },
+                        headers: { 'X-Api-Key': k, 'X-Target-Url': `https://www.datalab.to/api/v1/marker/${postData.request_id}` },
                         signal: sig
                     });
-                    
-                    if (!checkReq.ok) throw new Error("Datalab Check Failed");
-                    
+                    if (!checkReq.ok) throw new Error("Check Failed");
                     const checkData = await checkReq.json();
-                    
-                    if (checkData.status === 'complete') {
-                        // 修正讀取路徑：Marker 接口回傳的 markdown 通常在頂層或 result 內
-                        // 為了保險，我們檢查多個可能的位置
-                        const resultMd = checkData.markdown || (checkData.result ? checkData.result.markdown : null) || JSON.stringify(checkData);
-                        return resultMd;
-                    } else if (checkData.status === 'failed') {
-                        throw new Error(`Datalab Processing Failed: ${checkData.error || 'Unknown error'}`);
-                    }
+                    if (checkData.status === 'complete') return checkData.markdown || (checkData.result ? checkData.result.markdown : JSON.stringify(checkData));
+                    else if (checkData.status === 'failed') throw new Error(checkData.error || 'Failed');
                 }
             }
             
-            // --- 區塊 2: 通用 Chat AI (Gemini, OpenRouter...) ---
-            // 標頭模式轉發
-            
+            // --- 區塊 2: 通用 Chat AI ---
             let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
             let bodyObj = {};
             
@@ -1655,10 +1446,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 }
                 currentParts.push({ text: txt });
                 bodyContent.contents.push({ role: "user", parts: currentParts });
-                
                 bodyObj = bodyContent;
             } 
             else {
+                // OpenAI / OpenRouter / Others
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
                     if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
@@ -1674,17 +1465,23 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 });
                 let currentContent = [];
                 if (file) {
-                    currentContent.push({ type: "text", text: txt });
-                    currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
+                    // OpenAI 標準 API 不支援直接 application/pdf 作為 image_url
+                    // 但為了邏輯分流，這裡若是非圖片，嘗試僅傳送文本提示或假設支援
+                    if (mime === 'application/pdf' && p !== 'gemini') {
+                         // 對於不支援 PDF 的模型，這裡做一個兼容：僅傳送文字提示
+                         // 或者依賴某些支援 base64 文檔的 Router
+                         currentContent.push({ type: "text", text: `[SYSTEM: User uploaded a PDF. If you cannot read it, ask them to use Reader Tool.]\n${txt}` });
+                    } else {
+                        currentContent.push({ type: "text", text: txt });
+                        currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
+                    }
                 } else {
                     currentContent = txt;
                 }
                 messages.push({ role: "user", content: currentContent });
-
                 bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
             }
 
-            // --- 核心代理請求 ---
             headers['X-Target-Url'] = url; 
 
             const r = await fetch(USER_WORKER_URL, {
