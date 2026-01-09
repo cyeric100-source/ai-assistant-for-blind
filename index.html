@@ -639,7 +639,7 @@
                     const html = el ? el.innerHTML : "";
                     return {
                         text: text,
-                        markdown: text, // Reader 輸出通常已是 Markdown 渲染後的結果，但保留原始 MD 較難，這裡直接用 Text
+                        markdown: text, // Reader 輸出通常已是 Markdown 渲染後的結果
                         html: html
                     };
                 }
@@ -1137,7 +1137,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const outputArea = document.getElementById('reader-output-area');
             outputArea.innerHTML = "";
             document.getElementById('reader-result-wrapper').classList.remove('hidden');
-            outputArea.focus(); // 讓讀屏者知道開始了
+            outputArea.focus(); 
             
             playAudioCue('start');
 
@@ -1158,7 +1158,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
                     playAudioCue('success');
                     updateStatusBar("識別完成");
-                    outputArea.focus(); // 完成後聚焦結果
+                    outputArea.focus(); 
                 } catch (e) {
                     window.reportError("Chandra OCR Failed", e);
                 }
@@ -1271,7 +1271,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     outputArea.focus();
                 } catch(e) { window.reportError("Image Analysis Failed", e); }
             }
-        }
+        } // 關鍵修正：補上這個遺漏的括號！
 
         // --- Chat View Logic ---
         function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f) handleFileSelect(f); }); }
@@ -1321,8 +1321,8 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     if(selectedFile.type === 'application/pdf') {
                         fileData = await readFileAsBase64(selectedFile);
                         mime = 'application/pdf';
-                        input = txt || "請分析這份 PDF 文件。"; // 如果用戶沒打字，給個預設指令
-                        stickyMemory = { type: 'pdf', content: null, mime: 'application/pdf', count: 0 }; // PDF 不做黏性記憶，因太大
+                        input = txt || "請分析這份 PDF 文件。"; 
+                        stickyMemory = { type: 'pdf', content: null, mime: 'application/pdf', count: 0 }; 
                     } 
                     else if (selectedFile.type.startsWith('image/')) {
                         fileData = await readFileAsBase64(selectedFile); 
@@ -1465,11 +1465,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 });
                 let currentContent = [];
                 if (file) {
-                    // OpenAI 標準 API 不支援直接 application/pdf 作為 image_url
-                    // 但為了邏輯分流，這裡若是非圖片，嘗試僅傳送文本提示或假設支援
                     if (mime === 'application/pdf' && p !== 'gemini') {
-                         // 對於不支援 PDF 的模型，這裡做一個兼容：僅傳送文字提示
-                         // 或者依賴某些支援 base64 文檔的 Router
                          currentContent.push({ type: "text", text: `[SYSTEM: User uploaded a PDF. If you cannot read it, ask them to use Reader Tool.]\n${txt}` });
                     } else {
                         currentContent.push({ type: "text", text: txt });
@@ -1496,6 +1492,116 @@ Directly provide the final, polished Traditional Chinese translation.`;
             
             return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
         }
+        
+        function updateStatusBar(t, s='ready') { 
+            const b = document.getElementById('status-bar'); 
+            b.setAttribute('aria-live', s === 'error' ? 'assertive' : 'polite');
+            b.className = s; 
+            b.innerText = t; 
+        }
+
+        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
+        function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
+        
+        function addMessage(role, content) {
+            const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
+            div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+            document.getElementById('chat-output').appendChild(div); 
+            return div;
+        }
+        
+        function handleProviderChange(save=true) {
+            const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
+            document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
+            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
+            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
+            
+            const orSet = document.getElementById('openrouter-settings');
+            if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
+            
+            allCurrentModels = JSON.parse(localStorage.getItem(`${p}_model_list`)) || c.models;
+            handleModelFilter();
+            currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
+            document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
+            if(save) localStorage.setItem('provider', p);
+            showReadyStatus();
+        }
+        
+        function handleModelFilter() {
+            const f = document.getElementById('model-filter-input').value.toLowerCase();
+            updateModelSelect(allCurrentModels.filter(m=>m.toLowerCase().includes(f)), currentActiveModelId);
+        }
+        
+        function updateModelSelect(list, active) {
+            const s = document.getElementById('model-select'); s.innerHTML = "";
+            let found = false;
+            list.forEach(m => { const o = document.createElement('option'); o.value=m; o.innerText=m; if(m===active) found=true; s.appendChild(o); });
+            s.appendChild(new Option("自行輸入...", "CUSTOM"));
+            const w = document.getElementById('custom-model-wrapper');
+            if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
+        }
+        
+        async function fetchOnlineModels() {
+            const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
+            if(!k && p!=='openrouter') return alert("需 API Key");
+            const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
+            try {
+                let list=[];
+                if(p==='openrouter') list=(await(await fetch("https://openrouter.ai/api/v1/models")).json()).data.map(m=>m.id);
+                else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+                else if(p==='datalab') return; 
+                else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
+                
+                if(list && list.length > 0) { 
+                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
+                    allCurrentModels=list; 
+                    handleModelFilter(); 
+                    showTransientStatus("模型清單已更新並儲存"); 
+                } else {
+                    throw new Error("找不到可用模型");
+                }
+            } catch(e) { window.reportError("更新失敗", e); } 
+            finally { btn.innerText="更新"; btn.disabled=false; }
+        }
+
+        function handleModelSelectChange() {
+            const s = document.getElementById('model-select');
+            if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
+            else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
+        }
+        
+        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); }
+        
+        function saveSettings() {
+            const p = document.getElementById('provider-select').value;
+            const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
+            memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+            localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
+            localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
+            localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+            localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
+            localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+            localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
+            localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
+            localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
+            showTransientStatus("設定已儲存");
+            switchTab(lastActiveTabId || 'chat');
+        }
+
+        function restoreDefaults() {
+            const p = document.getElementById('provider-select').value; 
+            memoryPrompts.chat = PROVIDERS[p].prompt;
+            memoryPrompts.ocr = DEFAULT_OCR_PROMPT;
+            memoryPrompts.translate = DEFAULT_TRANSLATE_PROMPT;
+            localStorage.removeItem(`${p}_prompt`);
+            localStorage.removeItem('custom_prompt_ocr');
+            localStorage.removeItem('custom_prompt_translate');
+            document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
+            handleProviderChange(true); 
+            showTransientStatus("已還原預設值");
+        }
+
+        function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("日誌已複製")); }
     </script>
 </body>
 </html>
