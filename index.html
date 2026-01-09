@@ -25,7 +25,6 @@
             throw new Error("Local execution blocked.");
         }
 
-        // 修改為本地路徑
         const PDF_BASE = './pdf-dist/pdf.mjs';
         const WORKER_URL = './pdf-dist/pdf.worker.mjs';
 
@@ -98,7 +97,6 @@
         #status-bar.ready { background: #004400; }
         #status-bar.busy { background: #664400; }
         #status-bar.error { background: #660000; }
-        #status-bar.recording { background: #aa0000; animation: pulse 1s infinite; }
         
         #visual-progress {
             background: #333; color: #88ccff; font-size: 0.85rem; 
@@ -220,13 +218,7 @@
         /* 輸入區樣式 */
         .input-row { display: flex; gap: 8px; align-items: flex-end; }
         #user-input { min-height: 60px; max-height: 150px; margin-bottom: 0; resize: none; }
-        #voice-btn { 
-            width: 60px; height: 60px; border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.5rem; padding: 0; margin: 0;
-            flex-shrink: 0;
-        }
-        #voice-btn.recording { background-color: #ff3333 !important; animation: pulse 1s infinite; }
+        
         #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
         /* Utility Row & Checkbox */
@@ -263,11 +255,45 @@
         }
         .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; }
 
+        /* 匯出選單模態視窗 (Export Modal) */
+        #export-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        #export-modal {
+            background: #1a1a1a; border: 2px solid var(--accent-color);
+            padding: 20px; border-radius: 12px; width: 90%; max-width: 400px;
+            box-shadow: 0 0 30px rgba(255, 255, 0, 0.2);
+            display: flex; flex-direction: column;
+        }
+        #export-modal h2 { 
+            margin-top: 0; color: var(--accent-color); text-align: center; 
+            border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px;
+        }
+        .export-btn-group { display: flex; flex-direction: column; gap: 12px; }
+        .export-btn-group button { 
+            width: 100%; padding: 15px; text-align: left; border: 1px solid #444; 
+            background: #222; color: #fff; border-radius: 8px; font-size: 1.1rem;
+            cursor: pointer; display: flex; align-items: center;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .export-btn-group button:focus, .export-btn-group button:hover {
+            background: #333; border-color: var(--accent-color); outline: 2px solid var(--accent-color);
+            transform: scale(1.02);
+        }
+        .export-btn-group button span.icon { 
+            margin-right: 15px; width: 30px; text-align: center; font-size: 1.3rem;
+        }
+        .close-modal-btn {
+            margin-top: 15px; background: #440000 !important; border-color: #880000 !important; 
+            text-align: center !important; justify-content: center;
+        }
+
         .hidden { display: none !important; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
         
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
         /* 電腦版適配：側邊欄 */
         @media (min-width: 768px) {
             body {
@@ -302,7 +328,7 @@
             <div id="chat-container">
                 <div class="message assistant">
                     <h1 class="msg-heading">AI 助理：</h1>
-                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF，或使用語音進行對話。</div>
+                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF 進行對話。</div>
                 </div>
                 <div id="chat-output"></div>
             </div>
@@ -313,13 +339,16 @@
                     <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
                     
-                    <!-- 2. 暫停傳送 Checkbox -->
+                    <!-- 2. 匯出按鈕 (新功能) -->
+                    <button type="button" id="export-trigger-btn" class="secondary" onclick="exportManager.openMenu('export-trigger-btn')">📤 匯出</button>
+
+                    <!-- 3. 暫停傳送 Checkbox -->
                     <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
                         <span>暫停發送</span>
                     </label>
 
-                    <!-- 3. 清除按鈕 -->
+                    <!-- 4. 清除按鈕 -->
                     <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()">🗑️ 清除</button>
                     
                     <!-- 隱藏的 File Input -->
@@ -327,7 +356,6 @@
                 </div>
                 
                 <form onsubmit="handleSubmit(event)" class="input-row">
-                    <button type="button" id="voice-btn" class="secondary" title="語音輸入 (按住不放)" aria-label="語音輸入">🎤</button>
                     <textarea id="user-input" placeholder="輸入訊息..." rows="1" aria-label="輸入訊息區"></textarea>
                     <button type="submit" id="submit-btn" title="發送">傳送</button>
                 </form>
@@ -352,6 +380,8 @@
                 <div id="quick-ocr-output" role="region" aria-label="文字識別結果" tabindex="-1">
                     (等待拍攝...)
                 </div>
+                <!-- Reader 頁面的匯出 -->
+                <button type="button" class="action-btn secondary" style="margin-top:10px;" onclick="exportManager.openMenu(null, 'reader')">📤 匯出結果</button>
             </div>
 
             <div class="settings-card">
@@ -371,14 +401,6 @@
                         <input type="checkbox" id="pdf-translate"> <span>OCR 後翻譯成繁體中文</span>
                     </label>
                 </div>
-            </div>
-
-            <div class="settings-card">
-                <h3>💾 資料匯出 (Export)</h3>
-                <button type="button" id="copy-btn" class="action-btn secondary hidden" onclick="copyResult()">複製全部對話</button>
-                <button type="button" id="export-txt-btn" class="action-btn secondary hidden" onclick="exportChat('txt')">匯出為 TXT</button>
-                <button type="button" id="export-html-btn" class="action-btn secondary hidden" onclick="exportChat('html')">匯出為 HTML</button>
-                <p style="color:#777; font-size:0.9rem;">* 匯出按鈕將在有對話內容後顯示。</p>
             </div>
         </section>
 
@@ -431,14 +453,7 @@
                 </div>
 
                 <div class="settings-card">
-                    <h3>🎤 語音與操作</h3>
-                    <select id="voice-engine" onchange="saveVoiceSettings()">
-                        <option value="browser">瀏覽器原生 (免費)</option>
-                        <option value="openai">OpenAI Whisper (付費)</option>
-                        <option value="groq">Groq Whisper (快速)</option>
-                    </select>
-                    <input type="password" id="voice-api-key" placeholder="語音專用 Key (選填)" onchange="saveVoiceSettings()">
-                    
+                    <h3>⌨️ 系統操作 (System Operations)</h3>
                     <label class="check-btn">
                         <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
@@ -488,6 +503,33 @@
         </button>
     </nav>
 
+    <!-- 4. 匯出功能模態視窗 (Export Modal) -->
+    <div id="export-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <div id="export-modal">
+            <h2 id="export-title">匯出選項 (Export)</h2>
+            <div class="export-btn-group">
+                <button type="button" id="exp-copy-last" onclick="exportManager.copyLast()">
+                    <span class="icon">📋</span> 複製最後回應
+                </button>
+                <button type="button" onclick="exportManager.copyAll()">
+                    <span class="icon">📑</span> 複製完整對話
+                </button>
+                <button type="button" onclick="exportManager.downloadHTML()">
+                    <span class="icon">🌐</span> 下載為 HTML (網頁)
+                </button>
+                <button type="button" onclick="exportManager.downloadMarkdown()">
+                    <span class="icon">📝</span> 下載為 Markdown (筆記)
+                </button>
+                <button type="button" onclick="exportManager.downloadTXT()">
+                    <span class="icon">📄</span> 下載為 TXT (純文字)
+                </button>
+                <button type="button" class="close-modal-btn" onclick="exportManager.closeMenu()">
+                    <span class="icon">❌</span> 取消 / 關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- 核心變數：Cloudflare Worker 代理 ---
         const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
@@ -520,7 +562,169 @@
             }
         }
 
-        // --- 核心 2: 原始與新增邏輯 ---
+        // --- 核心 2: 匯出管理器 (Export Manager) ---
+        class ExportManager {
+            constructor() {
+                this.modalOverlay = document.getElementById('export-modal-overlay');
+                this.triggerElementId = null;
+                this.sourceMode = 'chat'; // 'chat' or 'reader'
+            }
+
+            openMenu(triggerId, mode = 'chat') {
+                this.triggerElementId = triggerId;
+                this.sourceMode = mode;
+                this.modalOverlay.style.display = 'flex';
+                // 焦點管理：開啟時聚焦第一個按鈕
+                setTimeout(() => document.getElementById('exp-copy-last').focus(), 100);
+            }
+
+            closeMenu() {
+                this.modalOverlay.style.display = 'none';
+                // 焦點管理：關閉時返回觸發按鈕
+                if (this.triggerElementId) {
+                    const el = document.getElementById(this.triggerElementId);
+                    if(el) el.focus();
+                }
+            }
+
+            // 獲取當前內容 (智慧判斷來源)
+            getContentData() {
+                // 如果是 Reader 模式，直接抓取 DOM 文字
+                if (this.sourceMode === 'reader') {
+                    const el = document.getElementById('quick-ocr-output');
+                    const text = el ? el.innerText : "";
+                    const html = el ? el.innerHTML : "";
+                    return {
+                        text: text,
+                        markdown: text, // Reader 輸出通常已是 Markdown 渲染後的結果，但保留原始 MD 較難，這裡直接用 Text
+                        html: html
+                    };
+                }
+
+                // 如果是 Chat 模式
+                if (chatHistory.length > 0) {
+                    // 有歷史紀錄，構建結構化資料
+                    let fullText = "";
+                    let fullMd = "";
+                    let lastReply = "";
+                    
+                    chatHistory.forEach(msg => {
+                        const roleName = msg.role === 'user' ? 'User' : 'AI';
+                        fullText += `[${roleName}]\n${msg.content}\n\n`;
+                        fullMd += `## ${roleName}\n${msg.content}\n\n`;
+                        if (msg.role === 'assistant') lastReply = msg.content;
+                    });
+                    
+                    return { text: fullText, markdown: fullMd, last: lastReply, isHistory: true };
+                } else {
+                    // 沒有歷史紀錄 (可能是 PDF 混合模式直接輸出的 DOM)，抓取 DOM
+                    const el = document.getElementById('chat-output');
+                    return {
+                        text: el.innerText,
+                        markdown: el.innerText,
+                        html: el.innerHTML
+                    };
+                }
+            }
+
+            copyLast() {
+                const data = this.getContentData();
+                const content = data.last || data.text;
+                if (!content) return showTransientStatus("無內容可複製", 'error');
+                navigator.clipboard.writeText(content).then(() => {
+                    showTransientStatus("已複製最後回應");
+                    this.closeMenu();
+                });
+            }
+
+            copyAll() {
+                const data = this.getContentData();
+                if (!data.text) return showTransientStatus("無內容可複製", 'error');
+                navigator.clipboard.writeText(data.text).then(() => {
+                    showTransientStatus("已複製全部內容");
+                    this.closeMenu();
+                });
+            }
+
+            downloadTXT() {
+                const data = this.getContentData();
+                this._download(data.text, 'export.txt', 'text/plain');
+            }
+
+            downloadMarkdown() {
+                const data = this.getContentData();
+                // Obsidian 優化：確保引用和代碼塊格式正確
+                let content = data.markdown;
+                if (!content) content = data.text;
+                this._download(content, 'export.md', 'text/markdown');
+            }
+
+            downloadHTML() {
+                let bodyContent = "";
+                const data = this.getContentData();
+                
+                if (data.isHistory) {
+                    // 如果有歷史紀錄，重新生成乾淨的 HTML (不含按鈕)
+                    chatHistory.forEach(msg => {
+                        const roleClass = msg.role === 'user' ? 'user' : 'assistant';
+                        const roleName = msg.role === 'user' ? 'User' : 'AI';
+                        const safeHTML = DOMPurify.sanitize(marked.parse(msg.content));
+                        bodyContent += `
+                            <div class="message ${roleClass}" style="margin-bottom:20px; padding:15px; border-left:5px solid ${msg.role==='user'?'#0088ff':'#FFFF00'}; background:#111;">
+                                <h3 style="margin:0 0 10px 0; color:#888;">${roleName}</h3>
+                                <div style="color:#fff;">${safeHTML}</div>
+                            </div>`;
+                    });
+                } else {
+                    // 否則使用 DOM，但進行清洗
+                    const clone = document.getElementById('chat-output').cloneNode(true);
+                    // 移除所有按鈕和腳本
+                    clone.querySelectorAll('button, script, style').forEach(el => el.remove());
+                    bodyContent = clone.innerHTML;
+                }
+
+                const finalHTML = `
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <title>Exported Chat</title>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+        a { color: #FFFF00; }
+        pre { background: #222; padding: 10px; overflow-x: auto; }
+        code { font-family: monospace; }
+        img { max-width: 100%; height: auto; }
+    </style>
+</head>
+<body>
+    <h1>對話紀錄匯出</h1>
+    <hr style="border-color:#333;">
+    ${bodyContent}
+</body>
+</html>`;
+                this._download(finalHTML, 'export.html', 'text/html');
+            }
+
+            _download(content, filename, mimeType) {
+                if (!content) return showTransientStatus("無內容可匯出", 'error');
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showTransientStatus(`已下載 ${filename}`);
+                this.closeMenu();
+            }
+        }
+
+        const exportManager = new ExportManager();
+
+        // --- 核心 3: 原始邏輯保留 ---
         
         class UniversalTextNormalizer {
             static getScriptType(char) {
@@ -686,13 +890,9 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
         let currentActiveModelId = "";
         let selectedFile = null;
-        let recognition = null; 
-        let mediaRecorder = null;
-        let audioChunks = [];
         let chatHistory = [];
         let audioContext = null;
         let allCurrentModels = [];
-        let isVoiceRecording = false;
         let specificConfigs = { ocr: null, translate: null };
         let memoryPrompts = { chat: "", ocr: "", translate: "" };
         let currentEditingMode = 'chat'; 
@@ -710,29 +910,15 @@ Directly provide the final, polished Traditional Chinese translation.`;
         
         document.addEventListener('keydown', handleGlobalShortcuts);
 
-        function initVoiceButtonEvents() {
-            const btn = document.getElementById('voice-btn');
-            if (!btn) return;
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); ensureAudioContext(); startVoiceRecording(); }, {passive: false});
-            btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
-            btn.addEventListener('mousedown', (e) => { ensureAudioContext(); startVoiceRecording(); });
-            btn.addEventListener('mouseup', (e) => { stopVoiceRecording(); });
-            btn.addEventListener('mouseleave', (e) => { if(isVoiceRecording) stopVoiceRecording(); });
-            btn.addEventListener('contextmenu', (e) => e.preventDefault());
-        }
-
         function handleGlobalShortcuts(e) {
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
             
             if (key === 'o') { e.preventDefault(); triggerQuickOCR(); return; }
+            if (key === 'e') { e.preventDefault(); exportManager.openMenu(); return; } // 新增：Alt+E 匯出
 
-            if (key === 'v') { e.preventDefault(); ensureAudioContext(); isVoiceRecording ? stopVoiceRecording() : startVoiceRecording(); return; }
             const actions = {
                 's': () => switchTab('settings'),
-                'c': { id: 'copy-btn' },
-                't': { id: 'export-txt-btn' },
-                'h': { id: 'export-html-btn' },
                 'u': { id: 'upload-btn' },
                 'n': { id: 'new-chat-btn' },
                 'k': { id: 'submit-btn' },
@@ -764,10 +950,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 const orSearch = document.getElementById('openrouter-web-search');
                 if(orSearch) orSearch.checked = (localStorage.getItem('openrouter_web_search') === 'true');
                 
-                const savedVoiceEngine = localStorage.getItem('voice_engine');
-                if (savedVoiceEngine) document.getElementById('voice-engine').value = savedVoiceEngine;
-                const savedVoiceKey = localStorage.getItem('voice_api_key');
-                if (savedVoiceKey) document.getElementById('voice-api-key').value = savedVoiceKey;
                 const savedEnter = localStorage.getItem('enter_to_send');
                 document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
 
@@ -785,11 +967,9 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 }
                 
                 handleProviderChange(false); 
-                initVoiceSystem();
                 initPasteImage();
                 initDragAndDrop();
                 initEnterKey();
-                initVoiceButtonEvents();
                 
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
@@ -929,7 +1109,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
             document.getElementById('upload-btn').classList.remove('active');
             document.getElementById('file-input').value = "";
-            toggleExportButtons(false);
             showTransientStatus("對話與記憶已清除");
         }
 
@@ -1008,7 +1187,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             containerDiv.innerHTML = `<h1 class="msg-heading">AI 助理 (即時處理中)：</h1><div class="markdown-body" id="streaming-output"></div>`;
             document.getElementById('chat-output').appendChild(containerDiv);
             const outputArea = containerDiv.querySelector('#streaming-output');
-            toggleExportButtons(true);
 
             let fullAccumulatedText = "";
 
@@ -1151,83 +1329,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
 
         // 已移除 extractTextFromPDF_Accurate 及其輔助函式 (由 AI 全權處理排版)
 
-        function initVoiceSystem() {
-            const engine = document.getElementById('voice-engine').value;
-            if (engine === 'browser') initBrowserSpeech(); 
-            else if (recognition) { recognition.stop(); recognition = null; }
-        }
-
-        function initBrowserSpeech() {
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                recognition = new SpeechRecognition(); 
-                recognition.lang = 'zh-HK'; recognition.continuous = true; recognition.interimResults = true; 
-                recognition.onstart = () => { isVoiceRecording=true; document.getElementById('voice-btn').classList.add('recording'); updateStatusBar('聆聽中...', 'recording'); playAudioCue('start'); };
-                recognition.onresult = (e) => {
-                    let t = ''; for (let i = e.resultIndex; i < e.results.length; ++i) if (e.results[i].isFinal) t += e.results[i][0].transcript;
-                    if (t) document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + t;
-                };
-                recognition.onerror = () => { stopVoiceInputUI(); playAudioCue('error'); };
-                recognition.onend = () => { if(isVoiceRecording) playAudioCue('abort'); stopVoiceInputUI(); };
-            }
-        }
-
-        function getSupportedMimeType() {
-            if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
-            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
-            if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
-            return ''; 
-        }
-
-        async function startVoiceRecording() {
-            ensureAudioContext(); if (isVoiceRecording) return;
-            const engine = document.getElementById('voice-engine').value;
-            if (engine === 'browser') { if (recognition) try { recognition.start(); } catch(e){} }
-            else {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const mimeType = getSupportedMimeType();
-                    const options = mimeType ? { mimeType } : undefined;
-                    
-                    mediaRecorder = new MediaRecorder(stream, options); 
-                    audioChunks = []; 
-                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                    mediaRecorder.onstop = async () => { 
-                        await processWhisperAudio(new Blob(audioChunks, {type: mediaRecorder.mimeType}), engine, mediaRecorder.mimeType); 
-                        stream.getTracks().forEach(t=>t.stop()); 
-                    };
-                    mediaRecorder.start(); isVoiceRecording = true; document.getElementById('voice-btn').classList.add('recording'); playAudioCue('start');
-                } catch (e) { showTransientStatus('麥克風錯誤', 'error'); }
-            }
-        }
-
-        function stopVoiceRecording() {
-            if (!isVoiceRecording) return;
-            ensureAudioContext(); isVoiceRecording = false; playAudioCue('success');
-            if (document.getElementById('voice-engine').value === 'browser' && recognition) recognition.stop();
-            else if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        }
-
-        function stopVoiceInputUI() {
-            isVoiceRecording = false; document.getElementById('voice-btn').classList.remove('recording');
-            if (!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus();
-        }
-
-        async function processWhisperAudio(blob, engine, mime) {
-            let apiKey = document.getElementById('voice-api-key').value || document.getElementById('api-key').value;
-            if (!apiKey) return alert("需 API Key");
-            const fd = new FormData(); fd.append('file', blob, `rec.${mime.includes('mp4')?'mp4':'webm'}`);
-            fd.append('model', engine === 'openai' ? 'whisper-1' : 'whisper-large-v3');
-            updateStatusBar("語音轉譯中...", "busy");
-            try {
-                const res = await fetch(engine==='openai'?"https://api.openai.com/v1/audio/transcriptions":"https://api.groq.com/openai/v1/audio/transcriptions", { method:'POST', headers:{'Authorization':`Bearer ${apiKey}`}, body:fd });
-                const data = await res.json();
-                if (data.text) { document.getElementById('user-input').value += (document.getElementById('user-input').value ? " " : "") + data.text; showReadyStatus(); }
-            } catch(e) { window.reportError("Whisper Error", e); }
-            finally { stopVoiceInputUI(); }
-        }
-
-        function saveVoiceSettings() { localStorage.setItem('voice_engine', document.getElementById('voice-engine').value); localStorage.setItem('voice_api_key', document.getElementById('voice-api-key').value); initVoiceSystem(); }
         function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f && f.type.startsWith('image/')) handleFileSelect(f); }); }
         function initDragAndDrop() { const d = document.getElementById('view-chat'); d.ondragover = e => {e.preventDefault(); d.style.background='#222'}; d.ondragleave = () => d.style.background=''; d.ondrop = e => {e.preventDefault(); d.style.background=''; handleFileSelect(e.dataTransfer.files[0]);}; }
         function initEnterKey() { document.getElementById('user-input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey && document.getElementById('enter-to-send').checked) { e.preventDefault(); document.getElementById('submit-btn').click(); } }; }
@@ -1246,10 +1347,8 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
             div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
             document.getElementById('chat-output').appendChild(div); 
-            toggleExportButtons(true);
             return div;
         }
-        function toggleExportButtons(show) { ['copy-btn','export-txt-btn','export-html-btn'].forEach(id=>document.getElementById(id).classList.toggle('hidden', !show)); }
         
         function handleProviderChange(save=true) {
             const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
@@ -1322,7 +1421,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            saveVoiceSettings(); 
             showTransientStatus("設定已儲存");
             switchTab(lastActiveTabId || 'chat');
         }
@@ -1340,13 +1438,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             showTransientStatus("已還原預設值");
         }
 
-        function copyResult() { navigator.clipboard.writeText(document.getElementById('chat-output').innerText).then(()=>showTransientStatus("已複製")); }
         function copyErrorLog() { navigator.clipboard.writeText(document.getElementById('error-log-area').value).then(()=>showTransientStatus("日誌已複製")); }
-        function exportChat(fmt) {
-            const c = document.getElementById('chat-output');
-            const b = new Blob([fmt==='html'?`<html><body>${c.innerHTML}</body></html>`:c.innerText], {type:fmt==='html'?'text/html':'text/plain'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `export.${fmt}`; a.click();
-        }
         
         async function handleFileSelect(f) {
             f = f || document.getElementById('file-input').files[0];
