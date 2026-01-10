@@ -814,7 +814,7 @@
             // 清空並重建
             container.innerHTML = '';
             CHANDRA_LANGUAGES.forEach(lang => {
-                const div = document.createElement('div');
+                const div = document.createElement('lang-item');
                 div.className = 'lang-item';
                 div.innerHTML = `
                     <input type="checkbox" id="lang-${lang.code}" value="${lang.code}" ${savedLangs.includes(lang.code) ? 'checked' : ''}>
@@ -1558,7 +1558,8 @@ Start translating immediately.`;
                         res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${res}`, null, null, null, transModel, transKey);
                     }
                     
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
+                    // 套用 UniversalTextNormalizer
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("處理完成");
                     outputArea.focus(); 
@@ -1639,7 +1640,8 @@ Start translating immediately.`;
                                 const pageBlock = document.createElement('div');
                                 pageBlock.className = 'reader-page-block';
                                 const pageId = `reader-page-${i}`;
-                                pageBlock.innerHTML = `<h3 id="${pageId}" tabindex="-1">Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(pageRes));
+                                // 套用 UniversalTextNormalizer
+                                pageBlock.innerHTML = `<h3 id="${pageId}" tabindex="-1">Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(pageRes)));
                                 outputArea.appendChild(pageBlock);
 
                                 // 焦點管理：第一頁完成時聚焦，讓讀屏讀出
@@ -1676,7 +1678,8 @@ Start translating immediately.`;
                     // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效
                     let res = await callAI(ocrProvider, finalSystemPrompt, [], "Analyze this image.", imgBase64, file.type, null, ocrModel, ocrApiKey);
                     
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
+                    // 套用 UniversalTextNormalizer
+                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("完成");
                     outputArea.focus();
