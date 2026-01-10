@@ -316,6 +316,57 @@
             text-align: center !important; justify-content: center;
         }
 
+        /* Chandra 設定頁面專用樣式 */
+        #view-chandra-settings {
+            background: #050505;
+        }
+        .chandra-header {
+            display: flex; align-items: center; background: #222; padding: 10px; 
+            border-bottom: 1px solid #444; flex-shrink: 0;
+        }
+        .back-btn {
+            background: #333; color: #fff; border: 1px solid #666; font-size: 1.2rem;
+            padding: 10px 20px; border-radius: 6px; margin-right: 15px; cursor: pointer;
+        }
+        .chandra-header h1 {
+            margin: 0; font-size: 1.3rem; color: var(--accent-color); border: none; flex: 1;
+        }
+        .radio-group {
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .radio-option {
+            display: flex; align-items: center; padding: 15px; background: #1a1a1a;
+            border: 1px solid #444; border-radius: 8px; position: relative;
+        }
+        .radio-option:has(input:checked) {
+            border-color: var(--accent-color); background: #2a2a00;
+        }
+        .radio-option input[type="radio"] {
+            width: 24px; height: 24px; margin-right: 15px; margin-bottom: 0;
+            accent-color: var(--accent-color);
+        }
+        .radio-info { display: flex; flex-direction: column; }
+        .radio-info strong { font-size: 1.1rem; color: #fff; }
+        .radio-info span { font-size: 0.9rem; color: #aaa; margin-top: 2px; }
+
+        .lang-search-box {
+            margin-top: 10px; margin-bottom: 10px;
+        }
+        #language-list-container {
+            height: 300px; overflow-y: auto; background: #111; border: 1px solid #444;
+            border-radius: 6px; padding: 5px;
+        }
+        .lang-item {
+            display: flex; align-items: center; padding: 12px 10px;
+            border-bottom: 1px solid #222;
+        }
+        .lang-item:last-child { border-bottom: none; }
+        .lang-item input[type="checkbox"] {
+            width: 24px; height: 24px; margin-right: 12px; margin-bottom: 0;
+            flex-shrink: 0; accent-color: var(--accent-color);
+        }
+        .lang-item label { font-size: 1rem; color: #ddd; flex: 1; cursor: pointer; }
+
         .hidden { display: none !important; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
         
@@ -346,7 +397,7 @@
         <div id="visual-progress" aria-hidden="true"></div>
     </header>
 
-    <!-- 2. 主內容區 (包含三個視圖) -->
+    <!-- 2. 主內容區 (包含四個視圖) -->
     <main>
         <!-- A. 對話視圖 (Chat View) -->
         <section id="view-chat" class="view-section active" role="tabpanel" aria-labelledby="tab-chat">
@@ -394,16 +445,21 @@
             <div class="settings-card" style="border-top: 3px solid var(--accent-color);">
                 <h3>1. 選擇識別模式</h3>
                 <div class="segmented-control" role="group" aria-label="識別模式選擇">
-                    <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra">
+                    <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra" onchange="toggleChandraBtn(true)">
                     <label for="mode-chandra">Chandra<br>(整份)</label>
                     
-                    <input type="radio" name="ocr-mode" id="mode-hybrid" value="hybrid" checked>
+                    <input type="radio" name="ocr-mode" id="mode-hybrid" value="hybrid" checked onchange="toggleChandraBtn(false)">
                     <label for="mode-hybrid">混合模式<br>(逐頁)</label>
                     
-                    <input type="radio" name="ocr-mode" id="mode-visual" value="visual">
+                    <input type="radio" name="ocr-mode" id="mode-visual" value="visual" onchange="toggleChandraBtn(false)">
                     <label for="mode-visual">純視覺<br>(逐頁)</label>
                 </div>
                 <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">* Chandra 適合快速提取整份文件；混合模式適合精準校對。</p>
+
+                <!-- Chandra 設定按鈕 (動態顯示) -->
+                <button type="button" id="btn-open-chandra-settings" class="action-btn secondary hidden" onclick="openChandraSettings()">
+                    ⚙️ Chandra 進階設定
+                </button>
 
                 <h3>2. 選擇檔案與執行</h3>
                 <!-- 單一上傳入口 -->
@@ -429,6 +485,99 @@
                 
                 <!-- 結果輸出容器，支援焦點導航 -->
                 <div id="reader-output-area" role="region" aria-label="文字識別結果內容" tabindex="-1"></div>
+            </div>
+        </section>
+
+        <!-- 新增: Chandra 設定視圖 (獨立分頁) -->
+        <section id="view-chandra-settings" class="view-section" role="dialog" aria-modal="false" aria-labelledby="chandra-settings-title">
+            <div class="chandra-header">
+                <button type="button" class="back-btn" onclick="saveChandraSettings()" aria-label="返回並儲存">&lt; 返回</button>
+                <h1 id="chandra-settings-title" tabindex="-1">Chandra 識別設定</h1>
+            </div>
+            
+            <div style="padding: 15px; overflow-y: auto; flex: 1;">
+                <!-- 1. 準確度模式 -->
+                <div class="settings-card">
+                    <fieldset style="border:none; padding:0; margin:0;">
+                        <legend style="color:#88ccff; font-weight:bold; font-size:1.2rem; margin-bottom:10px;">1. 準確度模式 (Mode)</legend>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="chandra-mode" value="fast">
+                                <div class="radio-info">
+                                    <strong>🟢 快速 (Fast)</strong>
+                                    <span>適合簡單文件，速度最快。</span>
+                                </div>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="chandra-mode" value="balanced" checked>
+                                <div class="radio-info">
+                                    <strong>🔵 平衡 (Balanced)</strong>
+                                    <span>(預設) 推薦使用。</span>
+                                </div>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="chandra-mode" value="accurate">
+                                <div class="radio-info">
+                                    <strong>🟣 精準 (Accurate)</strong>
+                                    <span>適合複雜排版，速度較慢。</span>
+                                </div>
+                            </label>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <!-- 2. 辨識語言 -->
+                <div class="settings-card">
+                    <fieldset style="border:none; padding:0; margin:0;">
+                        <legend style="color:#88ccff; font-weight:bold; font-size:1.2rem; margin-bottom:10px;">2. 辨識語言 (Languages)</legend>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="chandra-lang-mode" value="auto" checked onchange="toggleLangList(false)">
+                                <div class="radio-info"><strong>🔘 自動偵測 (Auto)</strong></div>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="chandra-lang-mode" value="custom" onchange="toggleLangList(true)">
+                                <div class="radio-info"><strong>🔘 自訂語言 (Custom)</strong></div>
+                            </label>
+                        </div>
+
+                        <!-- 展開的語言清單 -->
+                        <div id="custom-lang-wrapper" class="hidden" style="margin-top: 15px;">
+                            <input type="text" id="lang-search" class="lang-search-box" placeholder="輸入語言搜尋..." oninput="filterLanguages()">
+                            <div id="language-list-container">
+                                <!-- JS 動態生成 -->
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <!-- 3. 進階開關 -->
+                <div class="settings-card">
+                    <h3 style="color:#88ccff; font-size:1.2rem; margin-top:0;">3. 進階開關 (Advanced)</h3>
+                    <label class="check-btn">
+                        <input type="checkbox" id="chandra-force-ocr"> 
+                        <div style="display:flex; flex-direction:column;">
+                            <span>🔲 強制 OCR (Force OCR)</span>
+                            <span style="font-size:0.85rem; color:#aaa;">即使 PDF 有文字層也重新識別 (修復亂碼用)</span>
+                        </div>
+                    </label>
+                    <label class="check-btn">
+                        <input type="checkbox" id="chandra-use-llm">
+                        <div style="display:flex; flex-direction:column;">
+                            <span>🔲 AI 修復 (Use LLM)</span>
+                            <span style="font-size:0.85rem; color:#aaa;">使用 AI 修復表格與公式 (需較長時間)</span>
+                        </div>
+                    </label>
+                    <label class="check-btn">
+                        <input type="checkbox" id="chandra-paginate">
+                        <span>🔲 顯示頁數 (Paginate)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 底部按鈕 -->
+            <div style="padding:15px; background:#111; border-top:1px solid #444; flex-shrink:0;">
+                <button type="button" class="action-btn" onclick="saveChandraSettings()">💾 儲存並返回</button>
             </div>
         </section>
 
@@ -596,6 +745,132 @@
             if (tabId !== 'settings') {
                 lastActiveTabId = tabId;
             }
+        }
+
+        // --- Chandra 語言列表常數 ---
+        const CHANDRA_LANGUAGES = [
+            {code:'zh', name:'Chinese (Traditional / Simplified)'},
+            {code:'en', name:'English'},
+            {code:'ja', name:'Japanese'},
+            {code:'ko', name:'Korean'},
+            {code:'af', name:'Afrikaans'}, {code:'az', name:'Azerbaijani'}, {code:'be', name:'Belarusian'},
+            {code:'bs', name:'Bosnian'}, {code:'bg', name:'Bulgarian'}, {code:'ca', name:'Catalan'},
+            {code:'hr', name:'Croatian'}, {code:'cs', name:'Czech'}, {code:'da', name:'Danish'},
+            {code:'nl', name:'Dutch'}, {code:'et', name:'Estonian'}, {code:'fi', name:'Finnish'},
+            {code:'fr', name:'French'}, {code:'gl', name:'Galician'}, {code:'de', name:'German'},
+            {code:'el', name:'Greek'}, {code:'hu', name:'Hungarian'}, {code:'is', name:'Icelandic'},
+            {code:'ga', name:'Irish'}, {code:'it', name:'Italian'}, {code:'la', name:'Latin'},
+            {code:'lt', name:'Lithuanian'}, {code:'mk', name:'Macedonian'}, {code:'no', name:'Norwegian'},
+            {code:'pl', name:'Polish'}, {code:'pt', name:'Portuguese'}, {code:'ro', name:'Romanian'},
+            {code:'ru', name:'Russian'}, {code:'sr', name:'Serbian'}, {code:'sk', name:'Slovak'},
+            {code:'sl', name:'Slovenian'}, {code:'es', name:'Spanish'}, {code:'sv', name:'Swedish'},
+            {code:'tr', name:'Turkish'}, {code:'uk', name:'Ukrainian'}, {code:'cy', name:'Welsh'},
+            {code:'am', name:'Amharic'}, {code:'ar', name:'Arabic'}, {code:'as', name:'Assamese'},
+            {code:'bn', name:'Bengali'}, {code:'gu', name:'Gujarati'}, {code:'ha', name:'Hausa'},
+            {code:'he', name:'Hebrew'}, {code:'hi', name:'Hindi'}, {code:'id', name:'Indonesian'},
+            {code:'kn', name:'Kannada'}, {code:'ms', name:'Malay'}, {code:'ml', name:'Malayalam'},
+            {code:'mr', name:'Marathi'}, {code:'ne', name:'Nepali'}, {code:'fa', name:'Persian'},
+            {code:'pa', name:'Punjabi'}, {code:'sa', name:'Sanskrit'}, {code:'sw', name:'Swahili'},
+            {code:'ta', name:'Tamil'}, {code:'te', name:'Telugu'}, {code:'th', name:'Thai'},
+            {code:'ur', name:'Urdu'}, {code:'vi', name:'Vietnamese'}
+        ];
+
+        // --- Chandra 設定邏輯 ---
+        function toggleChandraBtn(show) {
+            const btn = document.getElementById('btn-open-chandra-settings');
+            if(show) btn.classList.remove('hidden');
+            else btn.classList.add('hidden');
+        }
+
+        function openChandraSettings() {
+            // 切換視圖
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            const view = document.getElementById('view-chandra-settings');
+            view.classList.add('active');
+            
+            // 載入設定
+            const mode = localStorage.getItem('chandra_mode') || 'balanced';
+            document.querySelector(`input[name="chandra-mode"][value="${mode}"]`).checked = true;
+            
+            const langMode = localStorage.getItem('chandra_lang_mode') || 'auto';
+            document.querySelector(`input[name="chandra-lang-mode"][value="${langMode}"]`).checked = true;
+            toggleLangList(langMode === 'custom');
+            
+            document.getElementById('chandra-force-ocr').checked = localStorage.getItem('chandra_force_ocr') === 'true';
+            document.getElementById('chandra-use-llm').checked = localStorage.getItem('chandra_use_llm') === 'true';
+            document.getElementById('chandra-paginate').checked = localStorage.getItem('chandra_paginate') === 'true';
+
+            // 渲染語言清單
+            renderLanguageList();
+            
+            // 焦點管理
+            document.getElementById('chandra-settings-title').focus();
+        }
+
+        function renderLanguageList() {
+            const container = document.getElementById('language-list-container');
+            const savedLangs = JSON.parse(localStorage.getItem('chandra_selected_langs') || '[]');
+            
+            // 清空並重建
+            container.innerHTML = '';
+            CHANDRA_LANGUAGES.forEach(lang => {
+                const div = document.createElement('div');
+                div.className = 'lang-item';
+                div.innerHTML = `
+                    <input type="checkbox" id="lang-${lang.code}" value="${lang.code}" ${savedLangs.includes(lang.code) ? 'checked' : ''}>
+                    <label for="lang-${lang.code}">${lang.name}</label>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function filterLanguages() {
+            const filter = document.getElementById('lang-search').value.toLowerCase();
+            document.querySelectorAll('.lang-item').forEach(item => {
+                const text = item.querySelector('label').innerText.toLowerCase();
+                item.style.display = text.includes(filter) ? 'flex' : 'none';
+            });
+        }
+
+        function toggleLangList(show) {
+            const wrapper = document.getElementById('custom-lang-wrapper');
+            if(show) {
+                wrapper.classList.remove('hidden');
+                document.getElementById('lang-search').focus();
+            } else {
+                wrapper.classList.add('hidden');
+            }
+        }
+
+        function saveChandraSettings() {
+            // 1. 儲存設定到 localStorage
+            const mode = document.querySelector('input[name="chandra-mode"]:checked').value;
+            localStorage.setItem('chandra_mode', mode);
+            
+            const langMode = document.querySelector('input[name="chandra-lang-mode"]:checked').value;
+            localStorage.setItem('chandra_lang_mode', langMode);
+            
+            if (langMode === 'custom') {
+                const selected = [];
+                document.querySelectorAll('#language-list-container input:checked').forEach(cb => selected.push(cb.value));
+                localStorage.setItem('chandra_selected_langs', JSON.stringify(selected));
+            }
+
+            localStorage.setItem('chandra_force_ocr', document.getElementById('chandra-force-ocr').checked);
+            localStorage.setItem('chandra_use_llm', document.getElementById('chandra-use-llm').checked);
+            localStorage.setItem('chandra_paginate', document.getElementById('chandra-paginate').checked);
+
+            // 2. 播放音效 & 切換回 Reader
+            playAudioCue('success');
+            
+            document.getElementById('view-chandra-settings').classList.remove('active');
+            document.getElementById('view-tools').classList.add('active');
+            
+            // 3. 焦點移回按鈕
+            setTimeout(() => {
+                const btn = document.getElementById('btn-open-chandra-settings');
+                if(btn) btn.focus();
+            }, 100);
         }
 
         // --- 核心 2: 匯出管理器 (Export Manager) ---
@@ -1031,6 +1306,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 initDragAndDrop();
                 initEnterKey();
                 
+                // 初始化 Chandra 按鈕顯示狀態
+                const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
+                toggleChandraBtn(chandraMode && chandraMode.value === 'chandra');
+                
                 const pauseToggle = document.getElementById('pause-send');
                 if(pauseToggle) pauseToggle.checked = false;
 
@@ -1405,6 +1684,29 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 formData.append('file', blob);
                 formData.append('output_format', 'markdown'); 
                 
+                // --- Chandra 進階參數注入 ---
+                // 讀取 localStorage 設定
+                const chandraMode = localStorage.getItem('chandra_mode');
+                if (chandraMode) formData.append('mode', chandraMode);
+                
+                const forceOCR = localStorage.getItem('chandra_force_ocr');
+                if (forceOCR === 'true') formData.append('force_ocr', 'true');
+                
+                const useLLM = localStorage.getItem('chandra_use_llm');
+                if (useLLM === 'true') formData.append('use_llm', 'true');
+                
+                const paginate = localStorage.getItem('chandra_paginate');
+                if (paginate === 'true') formData.append('paginate', 'true');
+                
+                const langMode = localStorage.getItem('chandra_lang_mode');
+                if (langMode === 'custom') {
+                    const savedLangs = JSON.parse(localStorage.getItem('chandra_selected_langs') || '[]');
+                    if (savedLangs.length > 0) {
+                        formData.append('langs', savedLangs.join(','));
+                    }
+                }
+                // -----------------------------
+
                 const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
                     headers: { 'X-Api-Key': k, 'X-Target-Url': 'https://www.datalab.to/api/v1/marker' },
