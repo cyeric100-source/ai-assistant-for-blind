@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視障助理 - 文字讀取專家</title>
+    <title>AI 視像助理第 1 測試版</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -393,7 +393,7 @@
 
     <!-- 1. 頂部狀態 -->
     <header role="banner">
-        <div id="status-bar" role="status" aria-live="polite">系統已啟動，請選擇功能</div>
+        <div id="status-bar" role="status" aria-live="polite">準備就緒</div>
         <div id="visual-progress" aria-hidden="true"></div>
     </header>
 
@@ -1420,6 +1420,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
             const needTranslate = document.getElementById('reader-translate').checked;
             
+            // 載入使用者自訂指令 (確保非 Chandra 模式使用這些指令)
+            let activeOcrPrompt = memoryPrompts.ocr || DEFAULT_OCR_PROMPT;
+            let activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
+            
             // 介面重置
             const outputArea = document.getElementById('reader-output-area');
             outputArea.innerHTML = "";
@@ -1440,19 +1444,37 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 
                 try {
                     const fileData = await readFileAsBase64(file);
-                    const res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, null, 'chandra', datalabKey);
+                    // Chandra OCR
+                    let res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, null, 'chandra', datalabKey);
+                    
+                    // 翻譯處理 (如果需要翻譯，無論何種模式都執行)
+                    if (needTranslate) {
+                        updateStatusBar("Chandra 識別完成，正在進行翻譯...", "busy");
+                        const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
+                        const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+                        const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
+                        
+                        // 呼叫翻譯專用 AI
+                        res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${res}`, null, null, null, transModel, transKey);
+                    }
                     
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
                     playAudioCue('success');
-                    updateStatusBar("識別完成");
+                    updateStatusBar("處理完成");
                     outputArea.focus(); 
                 } catch (e) {
-                    window.reportError("Chandra OCR Failed", e);
+                    window.reportError("Chandra Process Failed", e);
                 }
                 return;
             }
 
             // 3. 逐頁模式 (Hybrid 或 Visual)
+            // 建構最終 System Prompt (混合 OCR 與 翻譯指令)
+            let finalSystemPrompt = activeOcrPrompt;
+            if (needTranslate) {
+                finalSystemPrompt += "\n\n# TRANSLATION INSTRUCTION\n" + activeTranslatePrompt;
+            }
+
             if (file.type === 'application/pdf') {
                 if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
                 
@@ -1478,7 +1500,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                         document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
                         const page = await pdf.getPage(i);
-                        let promptToUse = VISUAL_PROMPT;
                         let promptContent = "";
                         let imgBase64 = null;
 
@@ -1500,7 +1521,6 @@ Directly provide the final, polished Traditional Chinese translation.`;
                                 const textContent = await page.getTextContent();
                                 const textLayer = textContent.items.map(item => item.str).join(" ");
                                 if (textLayer.length > 20 && textLayer.length < 8000) {
-                                    promptToUse = HYBRID_PROMPT;
                                     promptContent = `[Page ${i} Raw Text Start]\n${textLayer}\n[Page ${i} Raw Text End]\n\nProcess with Hybrid rules.`;
                                 } else {
                                     promptContent = `[Page ${i}]\nNo usable text layer. Visual Only.`;
@@ -1510,11 +1530,10 @@ Directly provide the final, polished Traditional Chinese translation.`;
                             promptContent = `[Page ${i}]\nVisual Mode Only.`;
                         }
 
-                        if (needTranslate) promptContent += "\n\nTranslate to Traditional Chinese (Hong Kong).";
-
                         if (imgBase64) {
                             try {
-                                const pageRes = await callAI(ocrProvider, promptToUse, [], promptContent, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                                // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效
+                                const pageRes = await callAI(ocrProvider, finalSystemPrompt, [], promptContent, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
                                 
                                 // 創建結果區塊
                                 const pageBlock = document.createElement('div');
@@ -1535,7 +1554,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                         
                         // 釋放記憶體
                         canvas.remove();
-                        if (ocrProvider === 'gemini') await sleep(4000); else await sleep(500);
+                        if (ocrProvider === 'gemini') await sleep(6000); else await sleep(500);
                     }
 
                     // 全部完成，焦點回到最上層
@@ -1551,7 +1570,12 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 try {
                     let imgBase64 = await readFileAsBase64(file);
                     let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-                    let res = await callAI(ocrProvider, VISUAL_PROMPT, [], "Analyze this image.", imgBase64, file.type, null);
+                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+                    let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
+
+                    // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效
+                    let res = await callAI(ocrProvider, finalSystemPrompt, [], "Analyze this image.", imgBase64, file.type, null, ocrModel, ocrApiKey);
+                    
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(res));
                     playAudioCue('success');
                     updateStatusBar("完成");
@@ -1574,7 +1598,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 
                 const isPaused = document.getElementById('pause-send').checked;
                 if (!isPaused) {
-                    showTransientStatus("即將自動發送...");
+                    showTransientStatus("傳送中");
                     setTimeout(() => {
                         const event = new Event('submit', { cancelable: true });
                         document.querySelector('form').dispatchEvent(event); 
@@ -1720,9 +1744,11 @@ Directly provide the final, polished Traditional Chinese translation.`;
                 while (true) {
                     if (sig && sig.aborted) throw new Error("已取消");
                     await new Promise(r => setTimeout(r, 1000));
+                    
+                    const targetUrl = postData.request_check_url ? postData.request_check_url : `https://www.datalab.to/api/v1/marker/${postData.request_id}`;
                     const checkReq = await fetch(USER_WORKER_URL, {
                         method: 'GET', 
-                        headers: { 'X-Api-Key': k, 'X-Target-Url': `https://www.datalab.to/api/v1/marker/${postData.request_id}` },
+                        headers: { 'X-Api-Key': k, 'X-Target-Url': targetUrl },
                         signal: sig
                     });
                     if (!checkReq.ok) throw new Error("Check Failed");
@@ -1818,7 +1844,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
             else { el.classList.remove('active'); el.innerText = ""; }
         }
 
-        function showReadyStatus() { updateStatusBar("系統已啟動，請選擇功能"); }
+        function showReadyStatus() { updateStatusBar("準備就緒"); }
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
         function addMessage(role, content) {
@@ -1874,7 +1900,7 @@ Directly provide the final, polished Traditional Chinese translation.`;
                     localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
                     allCurrentModels=list; 
                     handleModelFilter(); 
-                    showTransientStatus("模型清單已更新並儲存"); 
+                    showTransientStatus(`獲取成功，找到 ${list.length} 個模型並已儲存`); 
                 } else {
                     throw new Error("找不到可用模型");
                 }
