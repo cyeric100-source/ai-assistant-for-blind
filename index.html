@@ -1598,11 +1598,10 @@ Start translating immediately.`;
 
             // 2. 取得模式
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
-            const needTranslate = document.getElementById('reader-translate').checked;
+            // 移除舊的 needTranslate 綁定，改為後續檢查
             
             // 載入使用者自訂指令 (確保非 Chandra 模式使用這些指令)
             let activeOcrPrompt = memoryPrompts.ocr || DEFAULT_OCR_PROMPT;
-            let activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
             
             // 3. Chandra 模式 (整份處理)
             if (mode === 'chandra') {
@@ -1621,24 +1620,18 @@ Start translating immediately.`;
                     
                     if (currentSignal.aborted) return; // 再次檢查
 
-                    // 翻譯處理 (如果需要翻譯，無論何種模式都執行)
-                    if (needTranslate) {
-                        updateStatusBar("Chandra 識別完成，正在進行翻譯...", "busy");
-                        const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
-                        const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
-                        const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
-                        
-                        // 呼叫翻譯專用 AI (傳入 currentSignal)
-                        res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${res}`, null, null, currentSignal, transModel, transKey);
-                    }
-                    
-                    if (currentSignal.aborted) return;
-
-                    // 套用 UniversalTextNormalizer
+                    // 套用 UniversalTextNormalizer 並顯示
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("處理完成");
-                    outputArea.focus(); 
+                    
+                    // 新增：檢查是否需要全量翻譯
+                    if (document.getElementById('reader-translate').checked) {
+                         await executeFullTranslation(currentSignal);
+                    } else {
+                        outputArea.focus();
+                    }
+
                 } catch (e) {
                     if (e.message !== '已取消') window.reportError("Chandra Process Failed", e);
                 }
@@ -1646,12 +1639,8 @@ Start translating immediately.`;
             }
 
             // 4. 逐頁模式 (Hybrid 或 Visual)
-            // 建構最終 System Prompt (混合 OCR 與 翻譯指令)
-            let finalSystemPrompt = activeOcrPrompt;
-            if (needTranslate) {
-                finalSystemPrompt += "\n\n# TRANSLATION INSTRUCTION\n" + activeTranslatePrompt;
-            }
-
+            // 修改：不再預先組合翻譯 Prompt，只執行純 OCR
+            
             if (file.type === 'application/pdf') {
                 if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
                 
@@ -1714,8 +1703,8 @@ Start translating immediately.`;
                         if (imgBase64) {
                             try {
                                 if (currentSignal.aborted) break;
-                                // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效，並傳入 currentSignal
-                                const pageRes = await callAI(ocrProvider, finalSystemPrompt, [], promptContent, imgBase64, "image/jpeg", currentSignal, ocrModel, ocrApiKey);
+                                // 使用純 activeOcrPrompt，傳入 currentSignal
+                                const pageRes = await callAI(ocrProvider, activeOcrPrompt, [], promptContent, imgBase64, "image/jpeg", currentSignal, ocrModel, ocrApiKey);
                                 
                                 // 創建結果區塊
                                 const pageBlock = document.createElement('div');
@@ -1741,11 +1730,18 @@ Start translating immediately.`;
                     }
 
                     if (!currentSignal.aborted) {
-                        // 全部完成，焦點回到最上層
+                        // 全部完成
                         updateVisualProgress(false);
                         updateStatusBar("處理完成");
                         playAudioCue('success');
-                        outputArea.focus();
+
+                        // 新增：檢查是否需要全量翻譯
+                        if (document.getElementById('reader-translate').checked) {
+                             await executeFullTranslation(currentSignal);
+                        } else {
+                            outputArea.focus();
+                        }
+
                     } else {
                         updateStatusBar("已取消", "ready");
                     }
@@ -1762,8 +1758,8 @@ Start translating immediately.`;
 
                     if (currentSignal.aborted) return;
 
-                    // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效，並傳入 currentSignal
-                    let res = await callAI(ocrProvider, finalSystemPrompt, [], "Analyze this image.", imgBase64, file.type, currentSignal, ocrModel, ocrApiKey);
+                    // 使用純 activeOcrPrompt
+                    let res = await callAI(ocrProvider, activeOcrPrompt, [], "Analyze this image.", imgBase64, file.type, currentSignal, ocrModel, ocrApiKey);
                     
                     if (currentSignal.aborted) return;
 
@@ -1771,12 +1767,50 @@ Start translating immediately.`;
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("完成");
-                    outputArea.focus();
+                    
+                    // 新增：檢查是否需要全量翻譯
+                    if (document.getElementById('reader-translate').checked) {
+                         await executeFullTranslation(currentSignal);
+                    } else {
+                        outputArea.focus();
+                    }
+
                 } catch(e) { 
                     if (e.message !== '已取消') window.reportError("Image Analysis Failed", e); 
                 }
             }
         } // End processReaderTool
+
+        // 新增：執行全量翻譯函式
+        async function executeFullTranslation(signal) {
+             const outputArea = document.getElementById('reader-output-area');
+             const rawText = outputArea.innerText;
+             
+             if (!rawText || rawText.trim().length === 0) return;
+
+             updateStatusBar("OCR 完成，正在進行全量翻譯...", "busy");
+             
+             try {
+                const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
+                const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+                const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
+                
+                const activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
+                
+                const res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${rawText}`, null, null, signal, transModel, transKey);
+                
+                if (signal && signal.aborted) return;
+
+                // 替換原有內容
+                outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
+                updateStatusBar("翻譯完成");
+                playAudioCue('success');
+                outputArea.focus();
+
+             } catch(e) {
+                 if (e.message !== '已取消') window.reportError("翻譯失敗", e);
+             }
+        }
 
         // --- Chat View Logic ---
         function initPasteImage() { document.addEventListener('paste', e => { const f = e.clipboardData.files[0]; if(f) handleFileSelect(f); }); }
