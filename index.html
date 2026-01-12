@@ -279,6 +279,31 @@
             border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
         }
         .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; }
+        
+        /* 設定頁 Dashbroad & Layout */
+        .dashboard-row {
+            margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 8px;
+            display: flex; flex-direction: column;
+        }
+        .dashboard-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .dashboard-row strong { color: #88ccff; margin-bottom: 2px; }
+        .dashboard-row span { color: var(--accent-color); font-family: monospace; }
+        
+        .task-btn-grid {
+            display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px;
+        }
+        
+        .large-text-editor {
+            font-family: monospace; line-height: 1.4;
+            min-height: 150px; max-height: 40vh; /* 手機上限制高度並允許捲動 */
+            overflow-y: auto; resize: vertical;
+        }
+        
+        #error-log-area {
+            white-space: pre-wrap; word-break: break-all; /* 防止長錯誤碼撐破版面 */
+            font-family: monospace; font-size: 0.85rem;
+            max-height: 200px; overflow-y: auto;
+        }
 
         /* 匯出選單模態視窗 (Export Modal) */
         #export-modal-overlay {
@@ -386,6 +411,10 @@
             .nav-btn { height: auto; padding: 20px; width: 100%; border-top: none; border-left: 4px solid transparent; }
             .nav-btn.active { border-top: none; border-left-color: var(--accent-color); }
             main { grid-row: 2; grid-column: 2; }
+            
+            /* 設定頁電腦版佈局調整 */
+            .task-btn-grid { grid-template-columns: repeat(2, 1fr); }
+            .dashboard-row { flex-direction: row; justify-content: space-between; align-items: center; }
         }
     </style>
 </head>
@@ -581,22 +610,27 @@
             </div>
         </section>
 
-        <!-- C. 設定視圖 (Settings View) -->
+        <!-- C. 設定視圖 (Settings View - 重組版) -->
         <section id="view-settings" class="view-section" role="tabpanel" aria-labelledby="tab-settings">
             <h2 tabindex="-1" id="settings-title">系統設定 (Settings)</h2>
 
             <div id="settings-area">
+                <!-- 1. 全域配置儀表板 (Dashboard) -->
+                <div class="settings-card" role="region" aria-label="目前配置狀態">
+                    <h3>📊 當前配置狀態 (Dashboard)</h3>
+                    <div class="dashboard-row"><strong>💬 一般對話：</strong> <span id="dash-chat">讀取中...</span></div>
+                    <div class="dashboard-row"><strong>📷 文字識別：</strong> <span id="dash-ocr">跟隨主要設定</span></div>
+                    <div class="dashboard-row"><strong>🌐 翻譯專用：</strong> <span id="dash-trans">跟隨主要設定</span></div>
+                </div>
+
+                <!-- 2. 核心控制區 (Source & Credentials) -->
                 <div class="settings-card">
-                    <h3>🤖 AI 模型設定</h3>
-                    <div style="background: #442200; color: #ffcc88; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
-                        ⚠️ 2025 提示：推薦使用 Google Gemini 或 OpenRouter。
-                    </div>
+                    <h3>🤖 模型來源與憑證</h3>
                     
-                    <label>主要服務商:</label>
+                    <label>主要服務商 (Provider):</label>
                     <select id="provider-select" onchange="handleProviderChange(true)">
                         <option value="gemini">Google Gemini (推薦)</option>
                         <option value="openrouter">OpenRouter (推薦)</option>
-                        <!-- Datalab 已移除，改為獨立 Key 輸入 -->
                         <option value="openai">OpenAI</option>
                         <option value="groq">Groq</option>
                         <option value="mistral">Mistral AI</option>
@@ -611,60 +645,63 @@
                         <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
                     </div>
                     
-                    <label>模型過濾:</label>
-                    <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選..." oninput="handleModelFilter()">
+                    <label>模型過濾與選擇:</label>
+                    <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, gpt)..." oninput="handleModelFilter()">
                     
-                    <label>選擇模型:</label>
-                    <div style="display:flex; gap:10px;">
-                        <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0;"></select>
-                        <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0;">更新</button>
+                    <div style="display:flex; gap:10px; margin-bottom: 10px;">
+                        <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0; flex:1;"></select>
+                        <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0; padding:0 15px;">🔄 更新</button>
                     </div>
-                    <div id="custom-model-wrapper" class="hidden" style="margin-top:10px;">
+                    
+                    <div id="custom-model-wrapper" class="hidden">
                         <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
                     </div>
                 </div>
 
-                <div class="settings-card">
-                    <h3>🛠️ 任務分工 (Task Assignment)</h3>
-                    <div style="display:flex; flex-wrap:wrap; gap:10px;">
-                        <button type="button" class="secondary" onclick="setSpecificConfig('ocr')" style="flex:1;">設為 OCR 專用</button>
-                        <button type="button" class="secondary" onclick="setSpecificConfig('translate')" style="flex:1;">設為 翻譯 專用</button>
-                        <button type="button" class="danger" onclick="clearSpecificConfigs()" style="flex:1;">重置分工</button>
+                <!-- 3. 任務指派區 (Assignment Actions) -->
+                <div class="settings-card" style="border-left: 5px solid var(--accent-color);">
+                    <h3>👇 將上方選定的模型指派為...</h3>
+                    <div class="task-btn-grid">
+                        <button type="button" class="action-btn" onclick="setChatModel()">💬 設為 一般對話模型</button>
+                        <button type="button" class="secondary" onclick="setSpecificConfig('ocr')">📷 設為 OCR 專用</button>
+                        <button type="button" class="secondary" onclick="setSpecificConfig('translate')">🌐 設為 翻譯 專用</button>
+                        <button type="button" class="danger" onclick="clearSpecificConfigs()">♻️ 重置所有分工</button>
                     </div>
-                    <div id="config-status-display" aria-live="polite" style="margin-top:10px; color:#aaa; font-size:0.9rem;"></div>
                 </div>
 
+                <!-- 4. 系統行為與指令 (System Behavior & Prompts) -->
                 <div class="settings-card">
-                    <h3>⌨️ 系統操作 (System Operations)</h3>
+                    <h3>⚙️ 系統行為 (Behavior)</h3>
                     <label class="check-btn">
                         <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
                     </label>
                     <label class="check-btn" id="openrouter-settings" class="hidden">
                         <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
                     </label>
-                    
                     <label>回應逾時 (秒):</label>
                     <input type="number" id="timeout-setting" value="120">
-                </div>
 
-                <div class="settings-card">
                     <h3>📝 系統指令 (System Prompts)</h3>
                     <div class="utility-row">
                         <button type="button" id="tab-chat" class="secondary" onclick="switchPromptEditor('chat')">一般對話</button>
                         <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
                         <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
                     </div>
-                    <textarea id="system-prompt" rows="5" placeholder="在此輸入系統指令..."></textarea>
+                    <!-- 加入 large-text-editor class 以優化手機顯示 -->
+                    <textarea id="system-prompt" class="large-text-editor" placeholder="在此輸入系統指令..."></textarea>
                 </div>
 
+                <!-- 5. 底部：儲存與日誌 (Footer Actions & Logs) -->
                 <div class="settings-card" style="border-color: #550000;">
                     <h3>🐛 錯誤日誌 (Debug)</h3>
-                    <textarea id="error-log-area" readonly rows="5" placeholder="無錯誤"></textarea>
-                    <button type="button" class="secondary" onclick="copyErrorLog()">複製日誌</button>
+                    <textarea id="error-log-area" readonly placeholder="無錯誤"></textarea>
+                    <button type="button" class="secondary" onclick="copyErrorLog()" style="margin-top:10px;">複製日誌</button>
                 </div>
 
-                <button type="button" class="action-btn" onclick="saveSettings()">儲存所有設定</button>
-                <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
+                <div style="position:sticky; bottom:0; background:#000; padding:10px 0; border-top:1px solid #333;">
+                    <button type="button" class="action-btn" onclick="saveSettings()">💾 儲存所有設定</button>
+                    <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
+                </div>
             </div>
         </section>
     </main>
@@ -722,6 +759,7 @@
         // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
+        let activeReaderController = null; // 用於控制 Reader 的中斷
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -1387,7 +1425,6 @@ Start translating immediately.`;
 
                 const savedSpecifics = localStorage.getItem('specific_configs');
                 if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
-                updateConfigStatusDisplay();
 
                 memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
                 memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
@@ -1420,6 +1457,9 @@ Start translating immediately.`;
                 } else {
                     switchTab('chat');
                 }
+                
+                // 初始化儀表板
+                updateConfigStatusDisplay();
 
             } catch (e) { window.reportError("Init Error", e); }
         });
@@ -1435,6 +1475,16 @@ Start translating immediately.`;
             document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
         }
 
+        // 新增：設為一般對話模型
+        function setChatModel() {
+            const provider = document.getElementById('provider-select').value;
+            const model = currentActiveModelId;
+            // 由於一般對話直接跟隨 UI 選擇，此處主要更新儀表板並播放音效，讓用戶確認
+            updateConfigStatusDisplay(); // 強制刷新儀表板 (雖然 handleChange 可能已經刷過)
+            showTransientStatus(`已確認一般對話模型: ${provider} / ${model}`);
+            playAudioCue('success');
+        }
+
         function setSpecificConfig(type) {
             const provider = document.getElementById('provider-select').value;
             const model = currentActiveModelId;
@@ -1444,6 +1494,7 @@ Start translating immediately.`;
             if (currentKey) localStorage.setItem(`${provider}_key`, currentKey.trim());
             updateConfigStatusDisplay();
             showTransientStatus(`已設定 ${type} 專用模型`);
+            playAudioCue('success');
         }
 
         function clearSpecificConfigs() {
@@ -1451,14 +1502,27 @@ Start translating immediately.`;
             localStorage.removeItem('specific_configs');
             updateConfigStatusDisplay();
             showTransientStatus("已重置分工設定");
+            playAudioCue('success');
         }
 
         function updateConfigStatusDisplay() {
-            const display = document.getElementById('config-status-display');
-            let html = "";
-            html += specificConfigs.ocr ? `• OCR: ${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}<br>` : "";
-            html += specificConfigs.translate ? `• 翻譯: ${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "";
-            display.innerHTML = html || "目前跟隨主要設定";
+            // 更新儀表板
+            const currentProvider = document.getElementById('provider-select').value;
+            const currentModel = currentActiveModelId;
+
+            // 1. 一般對話
+            const chatEl = document.getElementById('dash-chat');
+            if (chatEl) chatEl.innerText = `${currentProvider} / ${currentModel}`;
+
+            // 2. OCR
+            const ocrEl = document.getElementById('dash-ocr');
+            if (ocrEl) ocrEl.innerText = specificConfigs.ocr ? 
+                `${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}` : "跟隨主要設定";
+
+            // 3. 翻譯
+            const transEl = document.getElementById('dash-trans');
+            if (transEl) transEl.innerText = specificConfigs.translate ? 
+                `${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "跟隨主要設定";
         }
 
         function playAudioCue(type) {
@@ -1516,7 +1580,23 @@ Start translating immediately.`;
         async function processReaderTool(file) {
             if (!file) return;
 
-            // 1. 取得模式
+            // --- 強制清除與中斷舊有任務 ---
+            if (activeReaderController) {
+                activeReaderController.abort();
+                activeReaderController = null;
+            }
+            // 建立新的控制器
+            activeReaderController = new AbortController();
+            const currentSignal = activeReaderController.signal;
+
+            // 1. 介面與記憶重置
+            const outputArea = document.getElementById('reader-output-area');
+            outputArea.innerHTML = ""; // 立即清空舊結果
+            document.getElementById('reader-result-wrapper').classList.remove('hidden');
+            outputArea.focus(); 
+            playAudioCue('start');
+
+            // 2. 取得模式
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
             const needTranslate = document.getElementById('reader-translate').checked;
             
@@ -1524,15 +1604,7 @@ Start translating immediately.`;
             let activeOcrPrompt = memoryPrompts.ocr || DEFAULT_OCR_PROMPT;
             let activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
             
-            // 介面重置
-            const outputArea = document.getElementById('reader-output-area');
-            outputArea.innerHTML = "";
-            document.getElementById('reader-result-wrapper').classList.remove('hidden');
-            outputArea.focus(); 
-            
-            playAudioCue('start');
-
-            // 2. Chandra 模式 (整份處理)
+            // 3. Chandra 模式 (整份處理)
             if (mode === 'chandra') {
                 const datalabKey = localStorage.getItem('datalab_key');
                 if (!datalabKey) {
@@ -1544,9 +1616,11 @@ Start translating immediately.`;
                 
                 try {
                     const fileData = await readFileAsBase64(file);
-                    // Chandra OCR
-                    let res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, null, 'chandra', datalabKey);
+                    // Chandra OCR (傳入 currentSignal)
+                    let res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, currentSignal, 'chandra', datalabKey);
                     
+                    if (currentSignal.aborted) return; // 再次檢查
+
                     // 翻譯處理 (如果需要翻譯，無論何種模式都執行)
                     if (needTranslate) {
                         updateStatusBar("Chandra 識別完成，正在進行翻譯...", "busy");
@@ -1554,22 +1628,24 @@ Start translating immediately.`;
                         const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
                         const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
                         
-                        // 呼叫翻譯專用 AI
-                        res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${res}`, null, null, null, transModel, transKey);
+                        // 呼叫翻譯專用 AI (傳入 currentSignal)
+                        res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${res}`, null, null, currentSignal, transModel, transKey);
                     }
                     
+                    if (currentSignal.aborted) return;
+
                     // 套用 UniversalTextNormalizer
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("處理完成");
                     outputArea.focus(); 
                 } catch (e) {
-                    window.reportError("Chandra Process Failed", e);
+                    if (e.message !== '已取消') window.reportError("Chandra Process Failed", e);
                 }
                 return;
             }
 
-            // 3. 逐頁模式 (Hybrid 或 Visual)
+            // 4. 逐頁模式 (Hybrid 或 Visual)
             // 建構最終 System Prompt (混合 OCR 與 翻譯指令)
             let finalSystemPrompt = activeOcrPrompt;
             if (needTranslate) {
@@ -1589,14 +1665,18 @@ Start translating immediately.`;
                         standardFontDataUrl: './pdf-dist/standard_fonts/'
                     }).promise;
 
-                    updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
-                    const controller = new AbortController();
+                    if (currentSignal.aborted) return;
 
+                    updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
+                    
                     let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
                     let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
                     for (let i = 1; i <= pdf.numPages; i++) {
+                        // 迴圈內檢查中斷
+                        if (currentSignal.aborted) break;
+
                         updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
                         document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
@@ -1633,8 +1713,9 @@ Start translating immediately.`;
 
                         if (imgBase64) {
                             try {
-                                // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效
-                                const pageRes = await callAI(ocrProvider, finalSystemPrompt, [], promptContent, imgBase64, "image/jpeg", controller.signal, ocrModel, ocrApiKey);
+                                if (currentSignal.aborted) break;
+                                // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效，並傳入 currentSignal
+                                const pageRes = await callAI(ocrProvider, finalSystemPrompt, [], promptContent, imgBase64, "image/jpeg", currentSignal, ocrModel, ocrApiKey);
                                 
                                 // 創建結果區塊
                                 const pageBlock = document.createElement('div');
@@ -1650,7 +1731,7 @@ Start translating immediately.`;
                                 }
 
                             } catch (e) {
-                                outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message}</p></div>`;
+                                if (e.message !== '已取消') outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message}</p></div>`;
                             }
                         }
                         
@@ -1659,11 +1740,15 @@ Start translating immediately.`;
                         if (ocrProvider === 'gemini') await sleep(6000); else await sleep(500);
                     }
 
-                    // 全部完成，焦點回到最上層
-                    updateVisualProgress(false);
-                    updateStatusBar("處理完成");
-                    playAudioCue('success');
-                    outputArea.focus();
+                    if (!currentSignal.aborted) {
+                        // 全部完成，焦點回到最上層
+                        updateVisualProgress(false);
+                        updateStatusBar("處理完成");
+                        playAudioCue('success');
+                        outputArea.focus();
+                    } else {
+                        updateStatusBar("已取消", "ready");
+                    }
 
                 } catch (e) { window.reportError("Reader Process Failed", e); }
             } else if (file.type.startsWith('image/')) {
@@ -1675,15 +1760,21 @@ Start translating immediately.`;
                     let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
-                    // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效
-                    let res = await callAI(ocrProvider, finalSystemPrompt, [], "Analyze this image.", imgBase64, file.type, null, ocrModel, ocrApiKey);
+                    if (currentSignal.aborted) return;
+
+                    // 使用 finalSystemPrompt 確保 OCR 和翻譯指令生效，並傳入 currentSignal
+                    let res = await callAI(ocrProvider, finalSystemPrompt, [], "Analyze this image.", imgBase64, file.type, currentSignal, ocrModel, ocrApiKey);
                     
+                    if (currentSignal.aborted) return;
+
                     // 套用 UniversalTextNormalizer
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("完成");
                     outputArea.focus();
-                } catch(e) { window.reportError("Image Analysis Failed", e); }
+                } catch(e) { 
+                    if (e.message !== '已取消') window.reportError("Image Analysis Failed", e); 
+                }
             }
         } // End processReaderTool
 
@@ -1971,6 +2062,9 @@ Start translating immediately.`;
             currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
             if(save) localStorage.setItem('provider', p);
+            
+            // 重要：切換服務商時，同步更新儀表板顯示 (因為儀表板是即時的)
+            updateConfigStatusDisplay();
             showReadyStatus();
         }
         
@@ -2014,10 +2108,18 @@ Start translating immediately.`;
         function handleModelSelectChange() {
             const s = document.getElementById('model-select');
             if(s.value==="CUSTOM") document.getElementById('custom-model-wrapper').classList.remove('hidden');
-            else { document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; }
+            else { 
+                document.getElementById('custom-model-wrapper').classList.add('hidden'); 
+                currentActiveModelId=s.value; 
+            }
+            // 更新模型選擇時，也要刷新儀表板 (顯示當前「對話」預覽)
+            updateConfigStatusDisplay();
         }
         
-        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); }
+        function handleCustomInputChange() { 
+            currentActiveModelId = document.getElementById('custom-model-input').value.trim(); 
+            updateConfigStatusDisplay();
+        }
         
         function saveSettings() {
             const p = document.getElementById('provider-select').value;
@@ -2037,6 +2139,8 @@ Start translating immediately.`;
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
             showTransientStatus("設定已儲存");
+            
+            // 儲存後返回上一個標籤頁
             switchTab(lastActiveTabId || 'chat');
         }
 
