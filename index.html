@@ -229,6 +229,9 @@
         .reader-page-block {
             border-bottom: 1px dashed #555; padding-bottom: 20px; margin-bottom: 20px;
         }
+        .translation-chunk {
+            border-left: 3px solid var(--accent-color); padding-left: 10px; margin-bottom: 20px;
+        }
 
         /* 對話氣泡樣式 */
         .message {
@@ -1323,33 +1326,35 @@ When you encounter a photo, icon, diagram, or illustration embedded within the t
 # Execution
 Proceed now with the image provided.`;
         
-        const DEFAULT_TRANSLATE_PROMPT = `# ROLE
-You are a rigorous "ISO-Certified Sworn Translator" specializing in accurate, complete document localization. You are NOT an assistant; you are a translation engine.
+        // [MODIFIED] 最佳化翻譯指令 (The Strict Archival Translator)
+        const DEFAULT_TRANSLATE_PROMPT = `# Role Definition
+You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in converting content into Traditional Chinese (Hong Kong).
 
-# TASK
-Translate the provided input text into **Traditional Chinese (Hong Kong)**.
+# The 3 Laws of Translation (MUST FOLLOW)
+1. **Zero Omission Policy (絕無遺漏)**:
+   - You must translate EVERY single sentence, phrase, list item, and caption.
+   - **STRICTLY PROHIBITED**: Do not use phrases like "Same as above", "...", "[Rest omitted]", or "Summary of the following".
+   - Even if the original text repeats itself 100 times, you must translate it 100 times.
 
-# STRICT PROTOCOL (ZERO OMISSION)
-1. **Completeness Strategy**:
-   - You MUST translate EVERY single sentence, phrase, and bullet point.
-   - **CRITICAL**: Do NOT summarize. Do NOT simplify. Do NOT leave out "unimportant" details.
-   - If a sentence is repetitive, translate it again. Do not merge sentences.
+2. **No Summarization (絕不摘要)**:
+   - Your job is to convert language, not to compress information.
+   - Do not attempt to "improve" the text by making it concise. If the original is verbose, the translation must be verbose.
 
-2. **Fidelity**:
-   - Preserve the original tone and logical structure.
-   - Keep all original Markdown formatting (headings, bold, lists) exactly as they are.
+3. **Output Continuity**:
+   - Translate faithfully without interruption.
 
-3. **Hong Kong Localization**:
-   - Use authentic Hong Kong vocabulary and phrasing (e.g., "質素" instead of "質量", "專案" instead of "項目").
+# Format & Language Standards
+- **Target Language**: Traditional Chinese (Hong Kong style / 繁體中文-香港).
+- **Formatting**: Preserve all original Markdown (headings #, bold **, lists -) exactly.
+- **Context Awareness**: Use the provided [Previous Translation] ONLY for maintaining consistency in terminology and names. Do NOT re-translate it.
+- **Handling Foreign Text**: If input is NOT Traditional Chinese, translate it. If it IS Traditional Chinese, output as is.
 
-4. **Handling Length**:
-   - If the text is long, do not rush to finish. Translate systematically from start to end.
-   - Do not output conversational fillers like "Here is the translation". Output ONLY the translated text.
-
-# EXECUTION
-Start translating immediately.`;
+# Workflow
+1. Read the [Current Text].
+2. Reference [Previous Translation] for context.
+3. Output the translation of [Current Text] ONLY.`;
         
-        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v8_hybrid_final";
+        const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v9_chunked";
 
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
@@ -1601,7 +1606,6 @@ Start translating immediately.`;
 
             // 2. 取得模式
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
-            // 移除舊的 needTranslate 綁定，改為後續檢查
             
             // 載入使用者自訂指令 (確保非 Chandra 模式使用這些指令)
             let activeOcrPrompt = memoryPrompts.ocr || DEFAULT_OCR_PROMPT;
@@ -1642,8 +1646,6 @@ Start translating immediately.`;
             }
 
             // 4. 逐頁模式 (Hybrid 或 Visual)
-            // 修改：不再預先組合翻譯 Prompt，只執行純 OCR
-            
             if (file.type === 'application/pdf') {
                 if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
                 
@@ -1784,35 +1786,115 @@ Start translating immediately.`;
             }
         } // End processReaderTool
 
-        // 新增：執行全量翻譯函式
+        // [MODIFIED] 全量翻譯邏輯 (滑動視窗分塊翻譯)
         async function executeFullTranslation(signal) {
              const outputArea = document.getElementById('reader-output-area');
+             // 1. 獲取原始 OCR 文字
              const rawText = outputArea.innerText;
              
              if (!rawText || rawText.trim().length === 0) return;
 
-             updateStatusBar("OCR 完成，正在進行全量翻譯...", "busy");
+             // 2. 智慧分割 (設定每塊約 1500 字，確保安全)
+             const chunks = splitTextSmart(rawText, 1500);
              
-             try {
-                const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
-                const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
-                const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
-                
-                const activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
-                
-                const res = await callAI(transProvider, activeTranslatePrompt, [], `[Source Content]:\n${rawText}`, null, null, signal, transModel, transKey);
-                
-                if (signal && signal.aborted) return;
+             updateStatusBar(`準備翻譯 ${chunks.length} 個區塊...`, "busy");
+             playAudioCue('start');
 
-                // 替換原有內容
-                outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
-                updateStatusBar("翻譯完成");
-                playAudioCue('success');
-                outputArea.focus();
+             // 3. 準備 UI：清空區域，準備逐段寫入
+             outputArea.innerHTML = ""; 
+             const header = document.createElement('h2');
+             header.innerText = "翻譯結果 (Translation Result)";
+             outputArea.appendChild(header);
 
-             } catch(e) {
-                 if (e.message !== '已取消') window.reportError("翻譯失敗", e);
+             // 4. 準備 Prompt 與變數
+             let previousTranslation = "";
+             const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
+             const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+             const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
+             const activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
+
+             // 5. 鏈式迴圈
+             for (let i = 0; i < chunks.length; i++) {
+                if (signal && signal.aborted) {
+                    updateStatusBar("翻譯已取消", "ready");
+                    return;
+                }
+
+                updateStatusBar(`正在翻譯第 ${i + 1} / ${chunks.length} 部分...`, "busy");
+                
+                // 構建 User Prompt (含上下文)
+                let userContent = "";
+                if (previousTranslation) {
+                    // 只取上一段的最後 500 字作為參考，避免 Token 浪費
+                    const shortContext = previousTranslation.slice(-500); 
+                    userContent += `=== [Context: Last Translated Text (For Reference Only)] ===\n...${shortContext}\n==========================================================\n\n`;
+                }
+                userContent += `=== [Current Text: To Be Translated] ===\n${chunks[i]}\n========================================\n`;
+
+                try {
+                    const chunkRes = await callAI(transProvider, activeTranslatePrompt, [], userContent, null, null, signal, transModel, transKey);
+                    
+                    // 渲染並追加到介面
+                    const div = document.createElement('div');
+                    div.className = "translation-chunk";
+                    div.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(chunkRes)));
+                    outputArea.appendChild(div);
+
+                    // 更新 Context
+                    previousTranslation = chunkRes;
+                    
+                    // 稍微暫停避免 Rate Limit
+                    await sleep(500);
+
+                } catch (e) {
+                    if (e.message !== '已取消') {
+                        const errDiv = document.createElement('div');
+                        errDiv.style.color = "red";
+                        errDiv.innerText = `[Part ${i+1} Error: ${e.message}]`;
+                        outputArea.appendChild(errDiv);
+                        window.reportError(`翻譯 Part ${i+1} 失敗`, e);
+                    }
+                }
              }
+
+             updateStatusBar("全量翻譯完成");
+             playAudioCue('success');
+             outputArea.focus();
+        }
+
+        // [NEW] 智慧分割函式
+        function splitTextSmart(text, chunkSize) {
+            const chunks = [];
+            let currentChunk = "";
+            const paragraphs = text.split("\n"); // 以段落為基礎分割
+
+            for (let i = 0; i < paragraphs.length; i++) {
+                let para = paragraphs[i];
+                
+                // 若單一段落過長，強制切分
+                if (para.length > chunkSize) {
+                     if (currentChunk) { chunks.push(currentChunk); currentChunk = ""; }
+                     while (para.length > 0) {
+                         chunks.push(para.slice(0, chunkSize));
+                         para = para.slice(chunkSize);
+                     }
+                     continue;
+                }
+
+                if (currentChunk.length + para.length < chunkSize) {
+                    currentChunk += para + "\n";
+                } else {
+                    chunks.push(currentChunk);
+                    currentChunk = para + "\n";
+                }
+            }
+            if (currentChunk.trim().length > 0) {
+                chunks.push(currentChunk);
+            }
+            // 防呆：若完全無換行
+            if (chunks.length === 0 && text.length > 0) return [text];
+            
+            return chunks;
         }
 
         // --- Chat View Logic ---
