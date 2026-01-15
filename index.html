@@ -278,7 +278,7 @@
             background: #2a2a00;
         }
 
-        /* --- 設定頁重構與手風琴樣式 (NEW) --- */
+        /* --- 設定頁重構與手風琴樣式 --- */
         .settings-card {
             background: #1a1a1a; padding: 15px; border-radius: 8px;
             border: 1px solid #333; margin-bottom: 20px;
@@ -304,7 +304,7 @@
         details.settings-group[open] summary { border-bottom: 1px solid #333; }
         .details-content { padding: 15px; }
 
-        /* Info Card Style (NEW) */
+        /* Info Card Style */
         .info-card {
             background: #111; border: 1px solid #444; border-radius: 8px;
             padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px;
@@ -315,7 +315,7 @@
         .info-card-value { color: var(--accent-color); font-weight: bold; text-align: right; }
         .info-card-desc { font-size: 0.9rem; color: #ccc; line-height: 1.4; margin-top: 5px; }
 
-        /* Fullscreen Editor Dialog (NEW) */
+        /* Fullscreen Editor Dialog */
         dialog#fullscreen-editor {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
             max-width: 100vw; max-height: 100dvh;
@@ -336,7 +336,7 @@
         }
         #fullscreen-textarea:focus { outline: 2px solid var(--accent-color); }
 
-        /* Smart Terminal (NEW) */
+        /* Smart Terminal */
         #error-log-area {
             width: 100%; max-height: 300px; overflow-y: auto;
             background: #000; color: #0f0; border: 1px solid #333;
@@ -853,7 +853,7 @@
         </div>
     </div>
 
-    <!-- 5. 全螢幕編輯器模態視窗 (NEW) -->
+    <!-- 5. 全螢幕編輯器模態視窗 -->
     <dialog id="fullscreen-editor">
         <div class="editor-header">
             <h2 style="margin:0; font-size:1.2rem; border:none; color:#fff;">全螢幕編輯 (Focus Mode)</h2>
@@ -876,6 +876,10 @@
         let lastActiveTabId = 'chat'; 
         let activeReaderController = null;
         
+        // --- 新增：活躍的對話狀態變數 (與 UI 狀態分離) ---
+        let activeChatProvider = localStorage.getItem('provider') || 'gemini';
+        let activeChatModel = localStorage.getItem(`${activeChatProvider}_model`) || PROVIDERS[activeChatProvider].defaultModel;
+
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -1573,11 +1577,27 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
         }
 
+        // --- 新增：設為一般對話模型 (同時也儲存設定) ---
         function setChatModel() {
-            const provider = document.getElementById('provider-select').value;
-            const model = currentActiveModelId;
-            updateConfigStatusDisplay(); 
-            showTransientStatus(`已確認一般對話模型: ${provider} / ${model}`);
+            // 1. 取得 UI 上選擇的 Provider 和 Model
+            const uiProvider = document.getElementById('provider-select').value;
+            const uiModel = currentActiveModelId; 
+            
+            // 2. 更新全域變數 (真正的對話模型)
+            activeChatProvider = uiProvider;
+            activeChatModel = uiModel;
+
+            // 3. 寫入 localStorage (正式儲存)
+            localStorage.setItem('provider', activeChatProvider);
+            localStorage.setItem(`${activeChatProvider}_model`, activeChatModel);
+            
+            // 4. 同時確保該 Provider 的 Key 也被儲存 (若用戶有輸入)
+            const currentKey = document.getElementById('api-key').value;
+            if (currentKey) localStorage.setItem(`${activeChatProvider}_key`, currentKey.trim());
+
+            // 5. 更新介面
+            updateConfigStatusDisplay();
+            showTransientStatus(`已確認一般對話模型: ${activeChatProvider} / ${activeChatModel}`);
             playAudioCue('success');
         }
 
@@ -1602,13 +1622,15 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         }
 
         function updateConfigStatusDisplay() {
-            const currentProvider = document.getElementById('provider-select').value;
-            const currentModel = currentActiveModelId;
+            // 更新儀表板
             const chatEl = document.getElementById('dash-chat');
-            if (chatEl) chatEl.innerText = `${currentProvider} / ${currentModel}`;
+            // 注意：這裡顯示的是 activeChatProvider (生效中的設定)，而非 UI 上正在瀏覽的
+            if (chatEl) chatEl.innerText = `${activeChatProvider} / ${activeChatModel}`;
+
             const ocrEl = document.getElementById('dash-ocr');
             if (ocrEl) ocrEl.innerText = specificConfigs.ocr ? 
                 `${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}` : "跟隨主要設定";
+
             const transEl = document.getElementById('dash-trans');
             if (transEl) transEl.innerText = specificConfigs.translate ? 
                 `${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "跟隨主要設定";
@@ -1733,8 +1755,10 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
                     updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
                     
-                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+                    // 修改：若無指定 OCR 專用模型，則使用 activeChatProvider (而不是 UI 上選擇的)
+                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : activeChatProvider;
+                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : activeChatModel;
+                    // Key 也是依照該 Provider 提取
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
                     for (let i = 1; i <= pdf.numPages; i++) {
@@ -1816,8 +1840,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 updateStatusBar("正在分析圖片...", "busy");
                 try {
                     let imgBase64 = await readFileAsBase64(file);
-                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : document.getElementById('provider-select').value;
-                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : currentActiveModelId;
+                    let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : activeChatProvider;
+                    let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : activeChatModel;
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
                     if (currentSignal.aborted) return;
@@ -1859,8 +1883,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
              outputArea.appendChild(header);
 
              let previousTranslation = "";
-             const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
-             const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
+             const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : activeChatProvider;
+             const transModel = specificConfigs.translate ? specificConfigs.translate.model : activeChatModel;
              const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
              const activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
 
@@ -2016,14 +2040,16 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
                 
+                // 修改：發送請求時，使用 activeChatProvider/activeChatModel，而非 UI 上的選擇
                 const res = await callAI(
-                    document.getElementById('provider-select').value, 
+                    activeChatProvider, 
                     document.getElementById('system-prompt').value,
                     chatHistory, 
                     input, 
                     fileData, 
                     mime, 
-                    ctl.signal
+                    ctl.signal,
+                    activeChatModel // 這裡明確傳入一般對話模型
                 );
 
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
@@ -2038,8 +2064,20 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         }
 
         async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
-            const k = ovKey || document.getElementById('api-key').value; 
-            const m = ovModel || currentActiveModelId;
+            // 修改：Key 的獲取邏輯
+            // 如果請求的 provider p 等於目前 UI 上顯示的 provider，則直接取輸入框的值 (方便測試新Key)
+            // 否則，從 localStorage 讀取該 provider 儲存的 Key
+            const k = ovKey || (p === document.getElementById('provider-select').value ? document.getElementById('api-key').value : localStorage.getItem(`${p}_key`));
+            
+            // 修改：Model 的獲取邏輯
+            // 如果有傳入 ovModel (如 Reader/Translate 指定)，則使用之
+            // 如果沒有，檢查 p 是否為 activeChatProvider，是則使用 activeChatModel
+            // 否則 (如手動切換 UI 瀏覽)，使用該 Provider 儲存的偏好模型，或預設值
+            let m = ovModel;
+            if (!m) {
+                if (p === activeChatProvider) m = activeChatModel;
+                else m = localStorage.getItem(`${p}_model`) || PROVIDERS[p].defaultModel;
+            }
             
             if(!k) throw new Error("需 API Key");
 
@@ -2213,7 +2251,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             handleModelFilter();
             currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
-            if(save) localStorage.setItem('provider', p);
+            // 這裡不再自動儲存 'provider' 到 localStorage，防止覆蓋全域 activeChatProvider
             
             updateConfigStatusDisplay();
             showReadyStatus();
@@ -2227,10 +2265,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 const isObj = typeof m === 'object';
                 const nameStr = isObj ? (m.name + m.id) : m;
                 
-                // 1. 關鍵字過濾
                 const textMatch = nameStr.toLowerCase().includes(f);
                 
-                // 2. 隱私過濾
                 let privacyMatch = true;
                 if (privacyOnly && isObj && 'priceIn' in m) {
                     if (m.priceIn === 0 && m.priceOut === 0) privacyMatch = false;
@@ -2239,7 +2275,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 return textMatch && privacyMatch;
             });
 
-            // 3. 排序邏輯
             if (filtered.length > 0 && typeof filtered[0] === 'object' && 'priceIn' in filtered[0]) {
                  filtered.sort((a, b) => {
                     const diff = a.priceIn - b.priceIn;
@@ -2264,7 +2299,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     const pOut = m.priceOut.toFixed(3);
                     o.innerText = `[${ctx}] ${m.name} ($${pIn}/$${pOut})`;
                     
-                    // 將完整物件資料存入 dataset 供卡片顯示使用
                     o.dataset.name = m.name;
                     o.dataset.ctx = ctx;
                     o.dataset.pin = pIn;
@@ -2284,7 +2318,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             const w = document.getElementById('custom-model-wrapper');
             if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
             
-            // 觸發一次更新，確保卡片顯示正確
             handleModelSelectChange();
         }
         
@@ -2321,7 +2354,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             finally { btn.innerText="更新"; btn.disabled=false; }
         }
 
-        // 修改：模型選擇變更時，更新新的資訊卡片
         function handleModelSelectChange() {
             const s = document.getElementById('model-select');
             const card = document.getElementById('model-info-card');
@@ -2334,10 +2366,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 currentActiveModelId=s.value; 
                 
                 const opt = s.options[s.selectedIndex];
-                // 檢查是否有 dataset (OpenRouter 模型)
                 if(opt && opt.dataset.name) {
                     card.classList.remove('hidden');
-                    // 生成卡片 HTML
                     card.innerHTML = `
                         <div class="info-card-row">
                             <span class="info-card-label">名稱 (Name)</span>
@@ -2371,6 +2401,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             updateConfigStatusDisplay();
         }
         
+        // --- 修改：saveSettings 不再覆蓋 activeChatProvider ---
         function saveSettings() {
             const p = document.getElementById('provider-select').value;
             const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
@@ -2379,14 +2410,19 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
             
+            // 儲存 Key 是必要的 (UI 上顯示的 Provider)
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
             localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
             
-            localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
+            // 我們可以儲存 "該 Provider 偏好的 Model"，方便下次選到該 Provider 時自動切換回來
+            localStorage.setItem(`${p}_model`, m); 
+            // 注意：currentActiveModelId 仍然是 m (UI 狀態)，但 activeChatProvider/Model (對話狀態) 不變
+            
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            showTransientStatus("設定已儲存");
+            
+            showTransientStatus("設定已儲存 (不影響一般對話模型)");
             
             switchTab(lastActiveTabId || 'chat');
         }
