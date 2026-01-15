@@ -81,7 +81,7 @@
             font-size: 1.1rem; line-height: 1.5;
             height: 100dvh;
             display: grid;
-            grid-template-rows: auto 1fr auto;
+            grid-template-rows: auto 1fr auto; /* Header, Main, Footer */
             overflow: hidden;
         }
 
@@ -108,41 +108,52 @@
         }
         #visual-progress.active { display: block; }
 
-        /* 2. 主內容區域 (Tab Views) */
+        /* 2. 主內容區域 (Tab Views) - 修改重點 1 */
         main {
             position: relative;
-            overflow: hidden;
+            overflow: hidden; /* 防止 main 本身滾動，交由內部處理 */
             background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
         }
 
         .view-section {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            overflow-y: auto;
-            padding: 15px;
+            /* 移除 absolute 定位，改用 Flexbox 填充 */
+            position: relative;
+            width: 100%;
+            height: 100%; 
             display: none;
             flex-direction: column;
+            overflow: hidden;
         }
 
         .view-section.active {
             display: flex;
         }
         
-        /* [Chat View] 特別佈局 */
-        #view-chat {
-            padding: 0; 
-        }
-        #chat-container {
-            flex: 1;
+        /* 內部滾動容器 (非 Chat 頁面使用) */
+        .view-section:not(#view-chat) {
             overflow-y: auto;
             padding: 15px;
+        }
+        
+        /* [Chat View] 特別佈局 - 確保輸入區置底 */
+        #view-chat {
+            padding: 0;
+        }
+        #chat-container {
+            flex: 1; /* 佔滿剩餘空間 */
+            overflow-y: auto; /* 只有對話區滾動 */
+            padding: 15px;
             padding-bottom: 20px;
+            scroll-behavior: smooth;
         }
         #input-area-wrapper {
-            flex-shrink: 0;
+            flex-shrink: 0; /* 防止被壓縮 */
             background: #111;
             border-top: 1px solid var(--border-color);
             padding: 10px;
+            z-index: 50;
         }
 
         /* 3. 底部導航欄 */
@@ -245,6 +256,11 @@
             background: #111; padding: 15px; margin-bottom: 20px;
             border-left: 5px solid var(--border-color);
             border-radius: 4px;
+            outline: none; /* 移除點擊時的預設邊框，由 focus-visible 處理 */
+        }
+        .message:focus {
+            background: #1f1f1f; /* 焦點時稍微亮一點 */
+            box-shadow: 0 0 0 2px var(--accent-color);
         }
         .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
         .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
@@ -256,9 +272,26 @@
         
         #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
         
-        /* Utility Row & Checkbox */
-        .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
-        .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; min-height: 44px; }
+        /* Utility Row & Checkbox - 修改重點 3 */
+        .utility-row { 
+            display: flex; 
+            gap: 10px; 
+            margin-bottom: 10px; 
+            overflow-x: auto; /* 水平滾動 */
+            padding-bottom: 5px; 
+            align-items: center; 
+            white-space: nowrap; /* 防止按鈕換行變形 */
+            -webkit-overflow-scrolling: touch; /* iOS 平滑滾動 */
+        }
+        .utility-row button { 
+            white-space: nowrap; 
+            font-size: 0.9rem; 
+            padding: 8px 12px; 
+            margin: 0; 
+            width: auto; 
+            flex-shrink: 0; 
+            min-height: 44px; 
+        }
 
         /* 標準 Checkbox 樣式 (對話頁專用) */
         .chat-check-btn {
@@ -268,6 +301,7 @@
             font-size: 0.9rem; cursor: pointer; white-space: nowrap;
             user-select: none;
             min-height: 44px;
+            flex-shrink: 0;
         }
         .chat-check-btn input {
             width: 20px; height: 20px; margin: 0 8px 0 0;
@@ -2052,8 +2086,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     activeChatModel // 這裡明確傳入一般對話模型
                 );
 
+                // --- 修改重點 2：AI 回應後自動將焦點轉移至新訊息，觸發朗讀 ---
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
-                setTimeout(() => { aiMsg.focus(); }, 100);
+                
+                // 設定 tabindex=-1 讓 div 可程式化聚焦，但不影響 Tab 順序
+                aiMsg.setAttribute('tabindex', '-1'); 
+                
+                // 強制聚焦，螢幕朗讀器會立即朗讀該元素內容
+                aiMsg.focus(); 
 
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
