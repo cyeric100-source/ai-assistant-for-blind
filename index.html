@@ -190,16 +190,22 @@
             background: var(--input-bg); border: 1px solid var(--border-color);
             color: var(--text-color); font-size: 1.1rem; border-radius: 6px;
         }
+        input:focus, select:focus, textarea:focus {
+            outline: 3px solid var(--accent-color);
+            outline-offset: 2px;
+        }
         
         button.action-btn {
             width: 100%; padding: 14px; font-size: 1.1rem; font-weight: bold;
             border-radius: 8px; margin-bottom: 12px; cursor: pointer;
             background-color: var(--button-bg); color: var(--button-text); border: none;
+            min-height: 48px; /* 觸控友善高度 */
         }
         button.secondary { background-color: #333; color: #fff; border: 1px solid #777; }
         button.danger { background-color: #550000; color: #ffcccc; border: 1px solid #ff4444; }
         button.high-contrast { background-color: #FFD700; color: #000; border: 2px solid #FFF; font-size: 1.2rem; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button:focus-visible { outline: 3px solid var(--accent-color); outline-offset: 2px; }
 
         /* 分段式控制 (Segmented Control) */
         .segmented-control {
@@ -211,6 +217,7 @@
             border-radius: 6px; font-size: 0.95rem; color: var(--segment-text);
             transition: all 0.2s; user-select: none;
             display: flex; align-items: center; justify-content: center;
+            min-height: 44px;
         }
         .segmented-control input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
         .segmented-control input[type="radio"]:checked + label {
@@ -251,7 +258,7 @@
         
         /* Utility Row & Checkbox */
         .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
-        .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; }
+        .utility-row button { white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; min-height: 44px; }
 
         /* 標準 Checkbox 樣式 (對話頁專用) */
         .chat-check-btn {
@@ -260,30 +267,93 @@
             padding: 8px 12px; border-radius: 6px;
             font-size: 0.9rem; cursor: pointer; white-space: nowrap;
             user-select: none;
+            min-height: 44px;
         }
         .chat-check-btn input {
-            width: 18px; height: 18px; margin: 0 8px 0 0;
-            accent-color: var(--accent-color); /* 強調色 */
+            width: 20px; height: 20px; margin: 0 8px 0 0;
+            accent-color: var(--accent-color);
         }
-        /* 勾選時高亮 */
         .chat-check-btn:has(input:checked) {
             border-color: var(--accent-color);
             background: #2a2a00;
         }
 
-        /* 設定頁樣式 */
+        /* --- 設定頁重構與手風琴樣式 (NEW) --- */
         .settings-card {
             background: #1a1a1a; padding: 15px; border-radius: 8px;
             border: 1px solid #333; margin-bottom: 20px;
         }
         
-        .check-btn {
-            display: flex; align-items: center; background: #222; padding: 10px;
-            border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
+        /* Accordion Style */
+        details.settings-group {
+            background: #151515; border: 1px solid #333; border-radius: 8px;
+            margin-bottom: 15px; overflow: hidden;
         }
-        .check-btn input { width: 25px; height: 25px; margin: 0 10px 0 0; }
+        details.settings-group summary {
+            padding: 15px; font-weight: bold; cursor: pointer;
+            background: #222; color: #fff; list-style: none;
+            display: flex; align-items: center; justify-content: space-between;
+            min-height: 50px; /* 增加點擊區域 */
+        }
+        details.settings-group summary:focus {
+            outline: 3px solid var(--accent-color); outline-offset: -3px;
+        }
+        details.settings-group summary::-webkit-details-marker { display: none; }
+        details.settings-group summary::after { content: '▼'; color: #888; transition: transform 0.2s; }
+        details.settings-group[open] summary::after { transform: rotate(180deg); }
+        details.settings-group[open] summary { border-bottom: 1px solid #333; }
+        .details-content { padding: 15px; }
+
+        /* Info Card Style (NEW) */
+        .info-card {
+            background: #111; border: 1px solid #444; border-radius: 8px;
+            padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px;
+        }
+        .info-card-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+        .info-card-row:last-child { border-bottom: none; }
+        .info-card-label { color: #888; font-size: 0.9rem; }
+        .info-card-value { color: var(--accent-color); font-weight: bold; text-align: right; }
+        .info-card-desc { font-size: 0.9rem; color: #ccc; line-height: 1.4; margin-top: 5px; }
+
+        /* Fullscreen Editor Dialog (NEW) */
+        dialog#fullscreen-editor {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
+            max-width: 100vw; max-height: 100dvh;
+            background: #000; color: #fff; border: none; padding: 0; margin: 0;
+            z-index: 9999; display: none; flex-direction: column;
+        }
+        dialog#fullscreen-editor[open] { display: flex; }
+        .editor-header {
+            padding: 15px; background: #222; border-bottom: 1px solid #444;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .editor-body { flex: 1; padding: 15px; overflow: hidden; display: flex; }
+        #fullscreen-textarea {
+            width: 100%; height: 100%; background: #111; color: #fff;
+            border: 1px solid #444; padding: 15px; font-size: 1.2rem; /* 大字體 */
+            font-family: monospace; resize: none; line-height: 1.6;
+            border-radius: 8px;
+        }
+        #fullscreen-textarea:focus { outline: 2px solid var(--accent-color); }
+
+        /* Smart Terminal (NEW) */
+        #error-log-area {
+            width: 100%; max-height: 300px; overflow-y: auto;
+            background: #000; color: #0f0; border: 1px solid #333;
+            padding: 10px; font-family: monospace; font-size: 0.85rem;
+            white-space: pre-wrap; word-break: break-all; /* 防止撐破 */
+            border-radius: 6px;
+        }
+
+        .check-btn {
+            display: flex; align-items: center; background: #222; padding: 12px;
+            border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
+            min-height: 48px; cursor: pointer;
+        }
+        .check-btn:focus-within { outline: 3px solid var(--accent-color); }
+        .check-btn input { width: 24px; height: 24px; margin: 0 15px 0 0; accent-color: var(--accent-color); }
         
-        /* 設定頁 Dashbroad & Layout */
+        /* Dashboard */
         .dashboard-row {
             margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 8px;
             display: flex; flex-direction: column;
@@ -296,19 +366,7 @@
             display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px;
         }
         
-        .large-text-editor {
-            font-family: monospace; line-height: 1.4;
-            min-height: 150px; max-height: 40vh; /* 手機上限制高度並允許捲動 */
-            overflow-y: auto; resize: vertical;
-        }
-        
-        #error-log-area {
-            white-space: pre-wrap; word-break: break-all; /* 防止長錯誤碼撐破版面 */
-            font-family: monospace; font-size: 0.85rem;
-            max-height: 200px; overflow-y: auto;
-        }
-
-        /* 匯出選單模態視窗 (Export Modal) */
+        /* 匯出選單模態視窗 */
         #export-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 9999;
@@ -418,6 +476,10 @@
             /* 設定頁電腦版佈局調整 */
             .task-btn-grid { grid-template-columns: repeat(2, 1fr); }
             .dashboard-row { flex-direction: row; justify-content: space-between; align-items: center; }
+            
+            /* 電腦版設定頁細節 */
+            details.settings-group { margin-bottom: 20px; }
+            #error-log-area { max-height: 400px; }
         }
     </style>
 </head>
@@ -613,104 +675,131 @@
             </div>
         </section>
 
-        <!-- C. 設定視圖 (Settings View - 重組版) -->
+        <!-- C. 設定視圖 (Settings View - 重組版：手風琴佈局) -->
         <section id="view-settings" class="view-section" role="tabpanel" aria-labelledby="tab-settings">
             <h2 tabindex="-1" id="settings-title">系統設定 (Settings)</h2>
 
             <div id="settings-area">
+                
                 <!-- 1. 全域配置儀表板 (Dashboard) -->
-                <div class="settings-card" role="region" aria-label="目前配置狀態">
-                    <h3>📊 當前配置狀態 (Dashboard)</h3>
-                    <div class="dashboard-row"><strong>💬 一般對話：</strong> <span id="dash-chat">讀取中...</span></div>
-                    <div class="dashboard-row"><strong>📷 文字識別：</strong> <span id="dash-ocr">跟隨主要設定</span></div>
-                    <div class="dashboard-row"><strong>🌐 翻譯專用：</strong> <span id="dash-trans">跟隨主要設定</span></div>
-                </div>
+                <details class="settings-group" open>
+                    <summary>📊 當前配置 (Status)</summary>
+                    <div class="details-content">
+                        <div class="dashboard-row"><strong>💬 一般對話：</strong> <span id="dash-chat">讀取中...</span></div>
+                        <div class="dashboard-row"><strong>📷 文字識別：</strong> <span id="dash-ocr">跟隨主要設定</span></div>
+                        <div class="dashboard-row"><strong>🌐 翻譯專用：</strong> <span id="dash-trans">跟隨主要設定</span></div>
+                    </div>
+                </details>
 
                 <!-- 2. 核心控制區 (Source & Credentials) -->
-                <div class="settings-card">
-                    <h3>🤖 模型來源與憑證</h3>
-                    
-                    <label>主要服務商 (Provider):</label>
-                    <select id="provider-select" onchange="handleProviderChange(true)">
-                        <option value="gemini">Google Gemini (推薦)</option>
-                        <option value="openrouter">OpenRouter (推薦)</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="groq">Groq</option>
-                        <option value="mistral">Mistral AI</option>
-                        <option value="perplexity">Perplexity</option>
-                    </select>
+                <details class="settings-group" open>
+                    <summary>🤖 模型來源與設定</summary>
+                    <div class="details-content">
+                        <label>主要服務商 (Provider):</label>
+                        <select id="provider-select" onchange="handleProviderChange(true)">
+                            <option value="gemini">Google Gemini (推薦)</option>
+                            <option value="openrouter">OpenRouter (推薦)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="groq">Groq</option>
+                            <option value="mistral">Mistral AI</option>
+                            <option value="perplexity">Perplexity</option>
+                        </select>
 
-                    <label>API Key (主要服務商):</label>
-                    <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
-                    
-                    <div style="margin: 15px 0; border-top: 1px dashed #333; padding-top: 15px;">
-                        <label>Chandra OCR API Key (Datalab 專用):</label>
-                        <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
+                        <label>API Key (主要服務商):</label>
+                        <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
+                        
+                        <div style="margin: 15px 0; border-top: 1px dashed #333; padding-top: 15px;">
+                            <label>Chandra OCR API Key (Datalab 專用):</label>
+                            <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
+                        </div>
+                        
+                        <!-- 隱私過濾 Checkbox -->
+                        <label class="check-btn" style="padding: 8px;">
+                            <input type="checkbox" id="privacy-filter" onchange="handleModelFilter()">
+                            <span style="font-size: 0.95rem;">🛡️ 只列出保障私隱的模型 (排除免費版)</span>
+                        </label>
+                        
+                        <label>模型過濾 (Filter):</label>
+                        <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, gpt)..." oninput="handleModelFilter()">
+                        
+                        <div style="display:flex; gap:10px; margin-bottom: 10px;">
+                            <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0; flex:1;"></select>
+                            <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0; padding:0 15px;">🔄 更新</button>
+                        </div>
+                        
+                        <!-- 新增：手機友善的詳細資訊卡片 -->
+                        <div id="model-info-card" class="info-card hidden" role="status" aria-label="模型詳細資訊">
+                            <!-- JS 動態填充 -->
+                        </div>
+                        
+                        <div id="custom-model-wrapper" class="hidden">
+                            <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+                        </div>
                     </div>
-                    
-                    <label>模型過濾與選擇:</label>
-                    <!-- 新增：隱私過濾 Checkbox -->
-                    <label class="check-btn" style="margin-bottom: 10px; padding: 8px;">
-                        <input type="checkbox" id="privacy-filter" onchange="handleModelFilter()">
-                        <span style="font-size: 0.95rem;">🛡️ 只列出保障私隱的模型 (排除免費版)</span>
-                    </label>
-                    
-                    <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, gpt)..." oninput="handleModelFilter()">
-                    
-                    <div style="display:flex; gap:10px; margin-bottom: 10px;">
-                        <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0; flex:1;"></select>
-                        <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0; padding:0 15px;">🔄 更新</button>
+                </details>
+
+                <!-- 3. 任務指派區 (Assignment) -->
+                <details class="settings-group">
+                    <summary>👇 模型分工指派</summary>
+                    <div class="details-content">
+                        <p style="font-size:0.9rem; color:#aaa; margin-top:0;">將上方選定的模型指派給不同任務：</p>
+                        <div class="task-btn-grid">
+                            <button type="button" class="action-btn" onclick="setChatModel()">💬 設為 一般對話</button>
+                            <button type="button" class="secondary" onclick="setSpecificConfig('ocr')">📷 設為 OCR 專用</button>
+                            <button type="button" class="secondary" onclick="setSpecificConfig('translate')">🌐 設為 翻譯 專用</button>
+                            <button type="button" class="danger" onclick="clearSpecificConfigs()">♻️ 重置所有分工</button>
+                        </div>
                     </div>
-                    
-                    <!-- 新增：模型描述顯示區 -->
-                    <div id="model-info-display" role="status" style="display:none; margin-bottom:15px; padding:10px; background:#222; border:1px solid #444; border-radius:6px; font-size:0.9rem; color:#ccc; line-height:1.4;"></div>
-                    
-                    <div id="custom-model-wrapper" class="hidden">
-                        <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
+                </details>
+
+                <!-- 4. 系統行為 (Behavior) -->
+                <details class="settings-group">
+                    <summary>⚙️ 系統行為</summary>
+                    <div class="details-content">
+                        <label class="check-btn">
+                            <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
+                        </label>
+                        <label class="check-btn" id="openrouter-settings" class="hidden">
+                            <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
+                        </label>
+                        <label>回應逾時 (秒):</label>
+                        <input type="number" id="timeout-setting" value="120">
                     </div>
-                </div>
+                </details>
 
-                <!-- 3. 任務指派區 (Assignment Actions) -->
-                <div class="settings-card" style="border-left: 5px solid var(--accent-color);">
-                    <h3>👇 將上方選定的模型指派為...</h3>
-                    <div class="task-btn-grid">
-                        <button type="button" class="action-btn" onclick="setChatModel()">💬 設為 一般對話模型</button>
-                        <button type="button" class="secondary" onclick="setSpecificConfig('ocr')">📷 設為 OCR 專用</button>
-                        <button type="button" class="secondary" onclick="setSpecificConfig('translate')">🌐 設為 翻譯 專用</button>
-                        <button type="button" class="danger" onclick="clearSpecificConfigs()">♻️ 重置所有分工</button>
+                <!-- 5. 系統指令 (System Prompts) -->
+                <details class="settings-group">
+                    <summary>📝 系統指令 (Prompts)</summary>
+                    <div class="details-content">
+                        <div class="utility-row">
+                            <button type="button" id="tab-chat" class="secondary" onclick="switchPromptEditor('chat')">一般對話</button>
+                            <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
+                            <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
+                        </div>
+                        
+                        <div style="position: relative;">
+                             <button type="button" class="secondary" style="width:100%; margin-bottom:5px;" onclick="openFullscreenEditor()">
+                                🔍 開啟全螢幕專注編輯模式 (Focus Mode)
+                             </button>
+                             <textarea id="system-prompt" class="large-text-editor" placeholder="在此輸入系統指令..."></textarea>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <!-- 4. 系統行為與指令 (System Behavior & Prompts) -->
-                <div class="settings-card">
-                    <h3>⚙️ 系統行為 (Behavior)</h3>
-                    <label class="check-btn">
-                        <input type="checkbox" id="enter-to-send" checked> <span>按 Enter 鍵傳送</span>
-                    </label>
-                    <label class="check-btn" id="openrouter-settings" class="hidden">
-                        <input type="checkbox" id="openrouter-web-search"> <span>啟用聯網搜尋 (OpenRouter)</span>
-                    </label>
-                    <label>回應逾時 (秒):</label>
-                    <input type="number" id="timeout-setting" value="120">
-
-                    <h3>📝 系統指令 (System Prompts)</h3>
-                    <div class="utility-row">
-                        <button type="button" id="tab-chat" class="secondary" onclick="switchPromptEditor('chat')">一般對話</button>
-                        <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
-                        <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
+                <!-- 6. 錯誤日誌 (Logs) -->
+                <details class="settings-group">
+                    <summary>🐛 錯誤日誌 (Debug)</summary>
+                    <div class="details-content">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                             <label style="font-size:0.9rem; color:#aaa;"><input type="checkbox" onchange="toggleLogWrap(this)"> 自動換行</label>
+                             <button type="button" class="secondary" onclick="copyErrorLog()" style="padding:4px 10px; min-height:30px; font-size:0.85rem;">複製日誌</button>
+                        </div>
+                        <textarea id="error-log-area" readonly placeholder="無錯誤"></textarea>
                     </div>
-                    <!-- 加入 large-text-editor class 以優化手機顯示 -->
-                    <textarea id="system-prompt" class="large-text-editor" placeholder="在此輸入系統指令..."></textarea>
-                </div>
+                </details>
 
-                <!-- 5. 底部：儲存與日誌 (Footer Actions & Logs) -->
-                <div class="settings-card" style="border-color: #550000;">
-                    <h3>🐛 錯誤日誌 (Debug)</h3>
-                    <textarea id="error-log-area" readonly placeholder="無錯誤"></textarea>
-                    <button type="button" class="secondary" onclick="copyErrorLog()" style="margin-top:10px;">複製日誌</button>
-                </div>
-
-                <div style="position:sticky; bottom:0; background:#000; padding:10px 0; border-top:1px solid #333;">
+                <!-- 底部操作列 (Sticky) -->
+                <div style="position:sticky; bottom:0; background:#000; padding:10px 0; border-top:1px solid #333; z-index:10;">
                     <button type="button" class="action-btn" onclick="saveSettings()">💾 儲存所有設定</button>
                     <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
                 </div>
@@ -734,7 +823,7 @@
         </button>
     </nav>
 
-    <!-- 4. 匯出功能模態視窗 (Export Modal) -->
+    <!-- 4. 匯出功能模態視窗 -->
     <div id="export-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="export-title">
         <div id="export-modal">
             <h2 id="export-title">匯出選項 (Export)</h2>
@@ -764,14 +853,28 @@
         </div>
     </div>
 
+    <!-- 5. 全螢幕編輯器模態視窗 (NEW) -->
+    <dialog id="fullscreen-editor">
+        <div class="editor-header">
+            <h2 style="margin:0; font-size:1.2rem; border:none; color:#fff;">全螢幕編輯 (Focus Mode)</h2>
+            <button type="button" class="secondary" onclick="closeFullscreenEditor(false)" style="width:auto; min-height:36px; padding:5px 15px;">取消</button>
+        </div>
+        <div class="editor-body">
+            <textarea id="fullscreen-textarea" placeholder="在此輸入..."></textarea>
+        </div>
+        <div style="padding:15px; background:#111; border-top:1px solid #444;">
+            <button type="button" class="action-btn" onclick="closeFullscreenEditor(true)">💾 完成編輯</button>
+        </div>
+    </dialog>
+
     <script>
         // --- 核心變數：Cloudflare Worker 代理 ---
         const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
 
-        // --- 全域變數：黏性記憶、歷史紀錄、上一個分頁 ---
+        // --- 全域變數 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
-        let activeReaderController = null; // 用於控制 Reader 的中斷
+        let activeReaderController = null;
         
         // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
@@ -833,12 +936,10 @@
         }
 
         function openChandraSettings() {
-            // 切換視圖
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             const view = document.getElementById('view-chandra-settings');
             view.classList.add('active');
             
-            // 載入設定
             const mode = localStorage.getItem('chandra_mode') || 'balanced';
             document.querySelector(`input[name="chandra-mode"][value="${mode}"]`).checked = true;
             
@@ -850,10 +951,7 @@
             document.getElementById('chandra-use-llm').checked = localStorage.getItem('chandra_use_llm') === 'true';
             document.getElementById('chandra-paginate').checked = localStorage.getItem('chandra_paginate') === 'true';
 
-            // 渲染語言清單
             renderLanguageList();
-            
-            // 焦點管理
             document.getElementById('chandra-settings-title').focus();
         }
 
@@ -861,7 +959,6 @@
             const container = document.getElementById('language-list-container');
             const savedLangs = JSON.parse(localStorage.getItem('chandra_selected_langs') || '[]');
             
-            // 清空並重建
             container.innerHTML = '';
             CHANDRA_LANGUAGES.forEach(lang => {
                 const div = document.createElement('lang-item');
@@ -893,7 +990,6 @@
         }
 
         function saveChandraSettings() {
-            // 1. 儲存設定到 localStorage
             const mode = document.querySelector('input[name="chandra-mode"]:checked').value;
             localStorage.setItem('chandra_mode', mode);
             
@@ -910,13 +1006,10 @@
             localStorage.setItem('chandra_use_llm', document.getElementById('chandra-use-llm').checked);
             localStorage.setItem('chandra_paginate', document.getElementById('chandra-paginate').checked);
 
-            // 2. 播放音效 & 切換回 Reader
             playAudioCue('success');
-            
             document.getElementById('view-chandra-settings').classList.remove('active');
             document.getElementById('view-tools').classList.add('active');
             
-            // 3. 焦點移回按鈕
             setTimeout(() => {
                 const btn = document.getElementById('btn-open-chandra-settings');
                 if(btn) btn.focus();
@@ -928,14 +1021,13 @@
             constructor() {
                 this.modalOverlay = document.getElementById('export-modal-overlay');
                 this.triggerElementId = null;
-                this.sourceMode = 'chat'; // 'chat' or 'reader'
+                this.sourceMode = 'chat'; 
             }
 
             openMenu(triggerId, mode = 'chat') {
                 this.triggerElementId = triggerId;
                 this.sourceMode = mode;
                 
-                // 動態顯示/隱藏 "複製到對話" 按鈕
                 const copyToChatBtn = document.getElementById('exp-copy-to-chat');
                 if (mode === 'reader') {
                     copyToChatBtn.classList.remove('hidden');
@@ -944,7 +1036,6 @@
                 }
 
                 this.modalOverlay.style.display = 'flex';
-                // 焦點管理：開啟時聚焦第一個可見按鈕
                 setTimeout(() => {
                     if (mode === 'reader') copyToChatBtn.focus();
                     else document.getElementById('exp-copy-last').focus();
@@ -953,30 +1044,21 @@
 
             closeMenu() {
                 this.modalOverlay.style.display = 'none';
-                // 焦點管理：關閉時返回觸發按鈕
                 if (this.triggerElementId) {
                     const el = document.getElementById(this.triggerElementId);
                     if(el) el.focus();
                 }
             }
 
-            // 獲取當前內容 (智慧判斷來源)
             getContentData() {
-                // 如果是 Reader 模式，直接抓取 DOM 文字
                 if (this.sourceMode === 'reader') {
                     const el = document.getElementById('reader-output-area');
                     const text = el ? el.innerText : "";
                     const html = el ? el.innerHTML : "";
-                    return {
-                        text: text,
-                        markdown: text, // Reader 輸出通常已是 Markdown 渲染後的結果
-                        html: html
-                    };
+                    return { text: text, markdown: text, html: html };
                 }
 
-                // 如果是 Chat 模式
                 if (chatHistory.length > 0) {
-                    // 有歷史紀錄，構建結構化資料
                     let fullText = "";
                     let fullMd = "";
                     let lastReply = "";
@@ -990,27 +1072,19 @@
                     
                     return { text: fullText, markdown: fullMd, last: lastReply, isHistory: true };
                 } else {
-                    // 沒有歷史紀錄 (可能是 PDF 混合模式直接輸出的 DOM)，抓取 DOM
                     const el = document.getElementById('chat-output');
-                    return {
-                        text: el.innerText,
-                        markdown: el.innerText,
-                        html: el.innerHTML
-                    };
+                    return { text: el.innerText, markdown: el.innerText, html: el.innerHTML };
                 }
             }
 
             copyToChat() {
                 const data = this.getContentData();
                 if (!data.text) return showTransientStatus("無內容可複製", 'error');
-                
-                // 切換到 Chat 頁面並填入
                 switchTab('chat');
                 const inputBox = document.getElementById('user-input');
                 inputBox.value = data.text;
                 inputBox.focus();
-                inputBox.selectionStart = inputBox.selectionEnd = data.text.length; // 游標移到最後
-                
+                inputBox.selectionStart = inputBox.selectionEnd = data.text.length;
                 this.closeMenu();
                 showTransientStatus("內容已貼上至輸入框，請按 Enter 發送");
             }
@@ -1041,7 +1115,6 @@
 
             downloadMarkdown() {
                 const data = this.getContentData();
-                // Obsidian 優化：確保引用和代碼塊格式正確
                 let content = data.markdown;
                 if (!content) content = data.text;
                 this._download(content, 'export.md', 'text/markdown');
@@ -1052,7 +1125,6 @@
                 const data = this.getContentData();
                 
                 if (data.isHistory) {
-                    // 如果有歷史紀錄，重新生成乾淨的 HTML (不含按鈕)
                     chatHistory.forEach(msg => {
                         const roleClass = msg.role === 'user' ? 'user' : 'assistant';
                         const roleName = msg.role === 'user' ? 'User' : 'AI';
@@ -1064,34 +1136,13 @@
                             </div>`;
                     });
                 } else {
-                    // 否則使用 DOM，但進行清洗
                     let sourceId = this.sourceMode === 'reader' ? 'reader-output-area' : 'chat-output';
                     const clone = document.getElementById(sourceId).cloneNode(true);
-                    // 移除所有按鈕和腳本
                     clone.querySelectorAll('button, script, style').forEach(el => el.remove());
                     bodyContent = clone.innerHTML;
                 }
 
-                const finalHTML = `
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-    <meta charset="UTF-8">
-    <title>Exported Chat</title>
-    <style>
-        body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
-        a { color: #FFFF00; }
-        pre { background: #222; padding: 10px; overflow-x: auto; }
-        code { font-family: monospace; }
-        img { max-width: 100%; height: auto; }
-    </style>
-</head>
-<body>
-    <h1>紀錄匯出 (${new Date().toLocaleString()})</h1>
-    <hr style="border-color:#333;">
-    ${bodyContent}
-</body>
-</html>`;
+                const finalHTML = `<!DOCTYPE html><html lang="zh-HK"><head><meta charset="UTF-8"><title>Exported Chat</title><style>body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; } a { color: #FFFF00; } pre { background: #222; padding: 10px; overflow-x: auto; } code { font-family: monospace; } img { max-width: 100%; height: auto; }</style></head><body><h1>紀錄匯出 (${new Date().toLocaleString()})</h1><hr style="border-color:#333;">${bodyContent}</body></html>`;
                 this._download(finalHTML, 'export.html', 'text/html');
             }
 
@@ -1112,6 +1163,42 @@
         }
 
         const exportManager = new ExportManager();
+
+        // --- 全螢幕編輯器邏輯 (NEW) ---
+        function openFullscreenEditor() {
+            const promptArea = document.getElementById('system-prompt');
+            const fullArea = document.getElementById('fullscreen-textarea');
+            const dialog = document.getElementById('fullscreen-editor');
+            
+            fullArea.value = promptArea.value;
+            dialog.showModal();
+            fullArea.focus();
+        }
+
+        function closeFullscreenEditor(save) {
+            const promptArea = document.getElementById('system-prompt');
+            const fullArea = document.getElementById('fullscreen-textarea');
+            const dialog = document.getElementById('fullscreen-editor');
+            
+            if (save) {
+                promptArea.value = fullArea.value;
+                showTransientStatus("指令已更新");
+            }
+            dialog.close();
+            promptArea.focus();
+        }
+
+        // --- 日誌顯示邏輯 (NEW) ---
+        function toggleLogWrap(checkbox) {
+            const area = document.getElementById('error-log-area');
+            if (checkbox.checked) {
+                area.style.whiteSpace = 'pre-wrap';
+                area.style.wordBreak = 'break-all';
+            } else {
+                area.style.whiteSpace = 'pre';
+                area.style.wordBreak = 'normal';
+            }
+        }
 
         // --- 核心 3: 原始邏輯保留與增強 ---
         
@@ -1164,7 +1251,6 @@
         };
 
         window.addEventListener('pdfjs-loaded', () => {
-            // PDF Loaded Signal
             showReadyStatus();
         });
 
@@ -1457,7 +1543,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 initDragAndDrop();
                 initEnterKey();
                 
-                // 初始化 Chandra 按鈕顯示狀態
                 const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
                 toggleChandraBtn(chandraMode && chandraMode.value === 'chandra');
                 
@@ -1472,7 +1557,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     switchTab('chat');
                 }
                 
-                // 初始化儀表板
                 updateConfigStatusDisplay();
 
             } catch (e) { window.reportError("Init Error", e); }
@@ -1489,12 +1573,10 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
         }
 
-        // 新增：設為一般對話模型
         function setChatModel() {
             const provider = document.getElementById('provider-select').value;
             const model = currentActiveModelId;
-            // 由於一般對話直接跟隨 UI 選擇，此處主要更新儀表板並播放音效，讓用戶確認
-            updateConfigStatusDisplay(); // 強制刷新儀表板 (雖然 handleChange 可能已經刷過)
+            updateConfigStatusDisplay(); 
             showTransientStatus(`已確認一般對話模型: ${provider} / ${model}`);
             playAudioCue('success');
         }
@@ -1520,20 +1602,13 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         }
 
         function updateConfigStatusDisplay() {
-            // 更新儀表板
             const currentProvider = document.getElementById('provider-select').value;
             const currentModel = currentActiveModelId;
-
-            // 1. 一般對話
             const chatEl = document.getElementById('dash-chat');
             if (chatEl) chatEl.innerText = `${currentProvider} / ${currentModel}`;
-
-            // 2. OCR
             const ocrEl = document.getElementById('dash-ocr');
             if (ocrEl) ocrEl.innerText = specificConfigs.ocr ? 
                 `${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}` : "跟隨主要設定";
-
-            // 3. 翻譯
             const transEl = document.getElementById('dash-trans');
             if (transEl) transEl.innerText = specificConfigs.translate ? 
                 `${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "跟隨主要設定";
@@ -1594,29 +1669,22 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         async function processReaderTool(file) {
             if (!file) return;
 
-            // --- 強制清除與中斷舊有任務 ---
             if (activeReaderController) {
                 activeReaderController.abort();
                 activeReaderController = null;
             }
-            // 建立新的控制器
             activeReaderController = new AbortController();
             const currentSignal = activeReaderController.signal;
 
-            // 1. 介面與記憶重置
             const outputArea = document.getElementById('reader-output-area');
-            outputArea.innerHTML = ""; // 立即清空舊結果
+            outputArea.innerHTML = ""; 
             document.getElementById('reader-result-wrapper').classList.remove('hidden');
             outputArea.focus(); 
             playAudioCue('start');
 
-            // 2. 取得模式
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
-            
-            // 載入使用者自訂指令 (確保非 Chandra 模式使用這些指令)
             let activeOcrPrompt = memoryPrompts.ocr || DEFAULT_OCR_PROMPT;
             
-            // 3. Chandra 模式 (整份處理)
             if (mode === 'chandra') {
                 const datalabKey = localStorage.getItem('datalab_key');
                 if (!datalabKey) {
@@ -1628,17 +1696,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 
                 try {
                     const fileData = await readFileAsBase64(file);
-                    // Chandra OCR (傳入 currentSignal)
                     let res = await callAI('datalab', DEFAULT_OCR_PROMPT, [], "", fileData, file.type, currentSignal, 'chandra', datalabKey);
                     
-                    if (currentSignal.aborted) return; // 再次檢查
+                    if (currentSignal.aborted) return; 
 
-                    // 套用 UniversalTextNormalizer 並顯示
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("處理完成");
                     
-                    // 新增：檢查是否需要全量翻譯
                     if (document.getElementById('reader-translate').checked) {
                          await executeFullTranslation(currentSignal);
                     } else {
@@ -1651,7 +1716,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 return;
             }
 
-            // 4. 逐頁模式 (Hybrid 或 Visual)
             if (file.type === 'application/pdf') {
                 if (typeof window.pdfjsLib === 'undefined') { alert("PDF 核心載入中..."); return; }
                 
@@ -1674,7 +1738,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
                     for (let i = 1; i <= pdf.numPages; i++) {
-                        // 迴圈內檢查中斷
                         if (currentSignal.aborted) break;
 
                         updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
@@ -1684,7 +1747,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                         let promptContent = "";
                         let imgBase64 = null;
 
-                        // 截圖 (所有模式都需要)
                         const viewportRaw = page.getViewport({ scale: 1.0 });
                         const scale = Math.min(1536 / Math.max(viewportRaw.width, viewportRaw.height), 2.0);
                         const canvas = document.createElement('canvas');
@@ -1696,7 +1758,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                             imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
                         }
                         
-                        // Hybrid 模式嘗試提取文字
                         if (mode === 'hybrid') {
                             try {
                                 const textContent = await page.getTextContent();
@@ -1714,18 +1775,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                         if (imgBase64) {
                             try {
                                 if (currentSignal.aborted) break;
-                                // 使用純 activeOcrPrompt，傳入 currentSignal
                                 const pageRes = await callAI(ocrProvider, activeOcrPrompt, [], promptContent, imgBase64, "image/jpeg", currentSignal, ocrModel, ocrApiKey);
                                 
-                                // 創建結果區塊
                                 const pageBlock = document.createElement('div');
                                 pageBlock.className = 'reader-page-block';
                                 const pageId = `reader-page-${i}`;
-                                // 套用 UniversalTextNormalizer
                                 pageBlock.innerHTML = `<h3 id="${pageId}" tabindex="-1">Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(pageRes)));
                                 outputArea.appendChild(pageBlock);
 
-                                // 焦點管理：第一頁完成時聚焦，讓讀屏讀出
                                 if (i === 1) {
                                     document.getElementById(pageId).focus();
                                 }
@@ -1735,18 +1792,15 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                             }
                         }
                         
-                        // 釋放記憶體
                         canvas.remove();
                         if (ocrProvider === 'gemini') await sleep(6000); else await sleep(500);
                     }
 
                     if (!currentSignal.aborted) {
-                        // 全部完成
                         updateVisualProgress(false);
                         updateStatusBar("處理完成");
                         playAudioCue('success');
 
-                        // 新增：檢查是否需要全量翻譯
                         if (document.getElementById('reader-translate').checked) {
                              await executeFullTranslation(currentSignal);
                         } else {
@@ -1759,7 +1813,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
                 } catch (e) { window.reportError("Reader Process Failed", e); }
             } else if (file.type.startsWith('image/')) {
-                // 單張圖片處理
                 updateStatusBar("正在分析圖片...", "busy");
                 try {
                     let imgBase64 = await readFileAsBase64(file);
@@ -1769,17 +1822,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
                     if (currentSignal.aborted) return;
 
-                    // 使用純 activeOcrPrompt
                     let res = await callAI(ocrProvider, activeOcrPrompt, [], "Analyze this image.", imgBase64, file.type, currentSignal, ocrModel, ocrApiKey);
                     
                     if (currentSignal.aborted) return;
 
-                    // 套用 UniversalTextNormalizer
                     outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
                     playAudioCue('success');
                     updateStatusBar("完成");
                     
-                    // 新增：檢查是否需要全量翻譯
                     if (document.getElementById('reader-translate').checked) {
                          await executeFullTranslation(currentSignal);
                     } else {
@@ -1790,36 +1840,30 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     if (e.message !== '已取消') window.reportError("Image Analysis Failed", e); 
                 }
             }
-        } // End processReaderTool
+        } 
 
-        // [MODIFIED] 全量翻譯邏輯 (滑動視窗分塊翻譯)
         async function executeFullTranslation(signal) {
              const outputArea = document.getElementById('reader-output-area');
-             // 1. 獲取原始 OCR 文字
              const rawText = outputArea.innerText;
              
              if (!rawText || rawText.trim().length === 0) return;
 
-             // 2. 智慧分割 (設定每塊約 1500 字，確保安全)
              const chunks = splitTextSmart(rawText, 1500);
              
              updateStatusBar(`準備翻譯 ${chunks.length} 個區塊...`, "busy");
              playAudioCue('start');
 
-             // 3. 準備 UI：清空區域，準備逐段寫入
              outputArea.innerHTML = ""; 
              const header = document.createElement('h2');
              header.innerText = "翻譯結果 (Translation Result)";
              outputArea.appendChild(header);
 
-             // 4. 準備 Prompt 與變數
              let previousTranslation = "";
              const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : document.getElementById('provider-select').value;
              const transModel = specificConfigs.translate ? specificConfigs.translate.model : currentActiveModelId;
              const transKey = (transProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${transProvider}_key`);
              const activeTranslatePrompt = memoryPrompts.translate || DEFAULT_TRANSLATE_PROMPT;
 
-             // 5. 鏈式迴圈
              for (let i = 0; i < chunks.length; i++) {
                 if (signal && signal.aborted) {
                     updateStatusBar("翻譯已取消", "ready");
@@ -1828,10 +1872,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
                 updateStatusBar(`正在翻譯第 ${i + 1} / ${chunks.length} 部分...`, "busy");
                 
-                // 構建 User Prompt (含上下文)
                 let userContent = "";
                 if (previousTranslation) {
-                    // 只取上一段的最後 500 字作為參考，避免 Token 浪費
                     const shortContext = previousTranslation.slice(-500); 
                     userContent += `=== [Context: Last Translated Text (For Reference Only)] ===\n...${shortContext}\n==========================================================\n\n`;
                 }
@@ -1840,16 +1882,12 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 try {
                     const chunkRes = await callAI(transProvider, activeTranslatePrompt, [], userContent, null, null, signal, transModel, transKey);
                     
-                    // 渲染並追加到介面
                     const div = document.createElement('div');
                     div.className = "translation-chunk";
                     div.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(chunkRes)));
                     outputArea.appendChild(div);
 
-                    // 更新 Context
                     previousTranslation = chunkRes;
-                    
-                    // 稍微暫停避免 Rate Limit
                     await sleep(500);
 
                 } catch (e) {
@@ -1868,16 +1906,13 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
              outputArea.focus();
         }
 
-        // [NEW] 智慧分割函式
         function splitTextSmart(text, chunkSize) {
             const chunks = [];
             let currentChunk = "";
-            const paragraphs = text.split("\n"); // 以段落為基礎分割
+            const paragraphs = text.split("\n"); 
 
             for (let i = 0; i < paragraphs.length; i++) {
                 let para = paragraphs[i];
-                
-                // 若單一段落過長，強制切分
                 if (para.length > chunkSize) {
                      if (currentChunk) { chunks.push(currentChunk); currentChunk = ""; }
                      while (para.length > 0) {
@@ -1897,9 +1932,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             if (currentChunk.trim().length > 0) {
                 chunks.push(currentChunk);
             }
-            // 防呆：若完全無換行
             if (chunks.length === 0 && text.length > 0) return [text];
-            
             return chunks;
         }
 
@@ -1947,7 +1980,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 let mime = null;
 
                 if(selectedFile) {
-                    // Chat View PDF Logic Split: Direct Send (No PDF.js)
                     if(selectedFile.type === 'application/pdf') {
                         fileData = await readFileAsBase64(selectedFile);
                         mime = 'application/pdf';
@@ -2011,7 +2043,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             
             if(!k) throw new Error("需 API Key");
 
-            // --- 區塊 1: Chandra OCR (Datalab) 專用 ---
             if (p === 'datalab') {
                 if (!file) throw new Error("Chandra OCR 僅支援檔案/圖片輸入");
                 
@@ -2027,8 +2058,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 formData.append('file', blob);
                 formData.append('output_format', 'markdown'); 
                 
-                // --- Chandra 進階參數注入 ---
-                // 讀取 localStorage 設定
                 const chandraMode = localStorage.getItem('chandra_mode');
                 if (chandraMode) formData.append('mode', chandraMode);
                 
@@ -2048,7 +2077,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                         formData.append('langs', savedLangs.join(','));
                     }
                 }
-                // -----------------------------
 
                 const postReq = await fetch(USER_WORKER_URL, {
                     method: 'POST',
@@ -2077,7 +2105,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 }
             }
             
-            // --- 區塊 2: 通用 Chat AI ---
             let url = "", headers = { "Content-Type": "application/json", "Authorization": `Bearer ${k}` };
             let bodyObj = {};
             
@@ -2105,14 +2132,10 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 bodyObj = bodyContent;
             } 
             else {
-                // OpenAI / OpenRouter / Others
                 if (p === 'openrouter') {
                     url = "https://openrouter.ai/api/v1/chat/completions";
-                    
-                    // [Added] OpenRouter Specific Headers for Ranking & Identity
                     headers["HTTP-Referer"] = "https://cyeric100-source.github.io/";
                     headers["X-Title"] = "AI Assistant for blind";
-                    
                     if(document.getElementById('openrouter-web-search').checked) bodyObj.plugins = [{id:"web"}];
                 } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
                 else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
@@ -2161,7 +2184,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             b.innerText = t; 
         }
 
-        // [關鍵修復] 補回遺失的 updateVisualProgress 函式
         function updateVisualProgress(show, text="") {
             const el = document.getElementById('visual-progress');
             if (show) { el.classList.add('active'); el.innerText = text; } 
@@ -2193,7 +2215,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
             if(save) localStorage.setItem('provider', p);
             
-            // 重要：切換服務商時，同步更新儀表板顯示 (因為儀表板是即時的)
             updateConfigStatusDisplay();
             showReadyStatus();
         }
@@ -2209,7 +2230,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 // 1. 關鍵字過濾
                 const textMatch = nameStr.toLowerCase().includes(f);
                 
-                // 2. 隱私過濾 (僅針對有價格資訊的 OpenRouter 物件)
+                // 2. 隱私過濾
                 let privacyMatch = true;
                 if (privacyOnly && isObj && 'priceIn' in m) {
                     if (m.priceIn === 0 && m.priceOut === 0) privacyMatch = false;
@@ -2218,14 +2239,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 return textMatch && privacyMatch;
             });
 
-            // 3. 排序邏輯 (價格低->高，名稱 A->Z)
+            // 3. 排序邏輯
             if (filtered.length > 0 && typeof filtered[0] === 'object' && 'priceIn' in filtered[0]) {
                  filtered.sort((a, b) => {
                     const diff = a.priceIn - b.priceIn;
                     return diff === 0 ? a.name.localeCompare(b.name) : diff;
                 });
             } else {
-                 filtered.sort(); // 純字串列表則按字母排序
+                 filtered.sort();
             }
             
             updateModelSelect(filtered, currentActiveModelId);
@@ -2242,7 +2263,14 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     const pIn = m.priceIn.toFixed(3); 
                     const pOut = m.priceOut.toFixed(3);
                     o.innerText = `[${ctx}] ${m.name} ($${pIn}/$${pOut})`;
+                    
+                    // 將完整物件資料存入 dataset 供卡片顯示使用
+                    o.dataset.name = m.name;
+                    o.dataset.ctx = ctx;
+                    o.dataset.pin = pIn;
+                    o.dataset.pout = pOut;
                     o.dataset.desc = m.description || "無描述";
+                    
                     if(m.id === active) found = true;
                 } else {
                     o.value = m;
@@ -2255,6 +2283,9 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             s.appendChild(new Option("自行輸入...", "CUSTOM"));
             const w = document.getElementById('custom-model-wrapper');
             if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
+            
+            // 觸發一次更新，確保卡片顯示正確
+            handleModelSelectChange();
         }
         
         async function fetchOnlineModels() {
@@ -2264,7 +2295,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             try {
                 let list=[];
                 if(p==='openrouter') {
-                    // 修改：OpenRouter 獲取完整物件並排序
                     const raw = await(await fetch("https://openrouter.ai/api/v1/models")).json();
                     list = raw.data.map(m => ({
                         id: m.id,
@@ -2291,27 +2321,48 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             finally { btn.innerText="更新"; btn.disabled=false; }
         }
 
+        // 修改：模型選擇變更時，更新新的資訊卡片
         function handleModelSelectChange() {
             const s = document.getElementById('model-select');
-            const info = document.getElementById('model-info-display');
+            const card = document.getElementById('model-info-card');
             
             if(s.value==="CUSTOM") {
                 document.getElementById('custom-model-wrapper').classList.remove('hidden');
-                info.style.display = 'none';
+                card.classList.add('hidden');
             } else { 
                 document.getElementById('custom-model-wrapper').classList.add('hidden'); 
                 currentActiveModelId=s.value; 
                 
-                // 新增：顯示描述邏輯
                 const opt = s.options[s.selectedIndex];
-                if(opt && opt.dataset.desc) {
-                    info.style.display = 'block';
-                    info.innerText = "ℹ️ " + opt.dataset.desc;
+                // 檢查是否有 dataset (OpenRouter 模型)
+                if(opt && opt.dataset.name) {
+                    card.classList.remove('hidden');
+                    // 生成卡片 HTML
+                    card.innerHTML = `
+                        <div class="info-card-row">
+                            <span class="info-card-label">名稱 (Name)</span>
+                            <span class="info-card-value">${opt.dataset.name}</span>
+                        </div>
+                        <div class="info-card-row">
+                            <span class="info-card-label">Context</span>
+                            <span class="info-card-value">${opt.dataset.ctx}</span>
+                        </div>
+                        <div class="info-card-row">
+                            <span class="info-card-label">Input Price</span>
+                            <span class="info-card-value">$${opt.dataset.pin}</span>
+                        </div>
+                        <div class="info-card-row">
+                            <span class="info-card-label">Output Price</span>
+                            <span class="info-card-value">$${opt.dataset.pout}</span>
+                        </div>
+                        <div class="info-card-desc">
+                            <strong>ℹ️ 描述：</strong>${opt.dataset.desc}
+                        </div>
+                    `;
                 } else {
-                    info.style.display = 'none';
+                    card.classList.add('hidden');
                 }
             }
-            // 更新模型選擇時，也要刷新儀表板 (顯示當前「對話」預覽)
             updateConfigStatusDisplay();
         }
         
@@ -2328,9 +2379,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
             
-            // Save active provider key
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
-            // Save dedicated Datalab key
             localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
             
             localStorage.setItem(`${p}_model`, m); currentActiveModelId = m;
@@ -2339,7 +2388,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
             showTransientStatus("設定已儲存");
             
-            // 儲存後返回上一個標籤頁
             switchTab(lastActiveTabId || 'chat');
         }
 
