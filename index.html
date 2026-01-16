@@ -78,10 +78,10 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
-            font-size: 1.1rem; line-height: 1.5;
-            height: 100dvh;
+            font-size: 1.1rem; line-height: 1.6; /* 增加行距，提升可讀性 */
+            height: 100dvh; /* 修改：使用 dvh 解決手機網址列遮擋問題 */
             display: grid;
-            grid-template-rows: auto 1fr auto; /* Header, Main, Footer */
+            grid-template-rows: auto 1fr auto;
             overflow: hidden;
         }
 
@@ -108,52 +108,42 @@
         }
         #visual-progress.active { display: block; }
 
-        /* 2. 主內容區域 (Tab Views) - 修改重點 1 */
+        /* 2. 主內容區域 (Tab Views) */
         main {
             position: relative;
-            overflow: hidden; /* 防止 main 本身滾動，交由內部處理 */
+            overflow: hidden;
             background: var(--bg-color);
-            display: flex;
-            flex-direction: column;
         }
 
         .view-section {
-            /* 移除 absolute 定位，改用 Flexbox 填充 */
-            position: relative;
-            width: 100%;
-            height: 100%; 
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            overflow-y: auto;
+            padding: 15px;
             display: none;
             flex-direction: column;
-            overflow: hidden;
         }
 
         .view-section.active {
             display: flex;
         }
         
-        /* 內部滾動容器 (非 Chat 頁面使用) */
-        .view-section:not(#view-chat) {
-            overflow-y: auto;
-            padding: 15px;
-        }
-        
-        /* [Chat View] 特別佈局 - 確保輸入區置底 */
+        /* [Chat View] 特別佈局 */
         #view-chat {
-            padding: 0;
+            padding: 0; 
         }
         #chat-container {
-            flex: 1; /* 佔滿剩餘空間 */
-            overflow-y: auto; /* 只有對話區滾動 */
+            flex: 1;
+            overflow-y: auto;
             padding: 15px;
             padding-bottom: 20px;
-            scroll-behavior: smooth;
         }
         #input-area-wrapper {
-            flex-shrink: 0; /* 防止被壓縮 */
+            flex-shrink: 0; /* 修改：確保輸入區不被擠壓 */
             background: #111;
             border-top: 1px solid var(--border-color);
             padding: 10px;
-            z-index: 50;
+            padding-bottom: env(safe-area-inset-bottom, 10px); /* 適配 iPhone 底部橫條 */
         }
 
         /* 3. 底部導航欄 */
@@ -163,9 +153,10 @@
             display: flex;
             justify-content: space-around;
             align-items: center;
-            height: 70px;
+            height: 70px; /* 保持適當高度 */
             flex-shrink: 0;
             z-index: 200;
+            padding-bottom: env(safe-area-inset-bottom, 0px);
         }
 
         .nav-btn {
@@ -180,6 +171,7 @@
             height: 100%;
             cursor: pointer;
             padding: 5px;
+            min-height: 48px; /* 修改：觸控友善高度 */
         }
         .nav-btn span.icon { font-size: 1.5rem; margin-bottom: 4px; display: block; }
         .nav-btn.active {
@@ -190,10 +182,23 @@
         .nav-btn:focus-visible { outline: 3px solid var(--accent-color); box-shadow: inset 0 0 10px #fff; }
 
         /* 通用元件樣式 */
-        h2 { 
+        
+        /* 修改：將原本的 h2 樣式移至 .ui-header，用於介面靜態標題 */
+        .ui-header { 
             font-size: 1.3rem; color: #88ccff; border-bottom: 2px solid #333; 
             padding-bottom: 5px; margin-top: 0; margin-bottom: 15px;
+            font-weight: bold;
         }
+        
+        /* AI 回應專用的 H1 樣式 */
+        h1.msg-heading { 
+            font-size: 1.2rem; 
+            color: #FFFF00; 
+            margin: 0 0 10px 0; 
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+
         h3 { color: #ccc; margin: 15px 0 10px 0; font-size: 1.1rem; }
 
         input, select, textarea {
@@ -210,7 +215,7 @@
             width: 100%; padding: 14px; font-size: 1.1rem; font-weight: bold;
             border-radius: 8px; margin-bottom: 12px; cursor: pointer;
             background-color: var(--button-bg); color: var(--button-text); border: none;
-            min-height: 48px; /* 觸控友善高度 */
+            min-height: 48px; /* 修改：觸控友善高度 */
         }
         button.secondary { background-color: #333; color: #fff; border: 1px solid #777; }
         button.danger { background-color: #550000; color: #ffcccc; border: 1px solid #ff4444; }
@@ -228,7 +233,7 @@
             border-radius: 6px; font-size: 0.95rem; color: var(--segment-text);
             transition: all 0.2s; user-select: none;
             display: flex; align-items: center; justify-content: center;
-            min-height: 44px;
+            min-height: 48px; /* 修改：觸控友善高度 */
         }
         .segmented-control input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
         .segmented-control input[type="radio"]:checked + label {
@@ -256,41 +261,41 @@
             background: #111; padding: 15px; margin-bottom: 20px;
             border-left: 5px solid var(--border-color);
             border-radius: 4px;
-            outline: none; /* 移除點擊時的預設邊框，由 focus-visible 處理 */
+            outline: none; /* 移除預設邊框，由 focus 狀態管理 */
         }
         .message:focus {
-            background: #1f1f1f; /* 焦點時稍微亮一點 */
-            box-shadow: 0 0 0 2px var(--accent-color);
+            box-shadow: 0 0 0 2px var(--accent-color); /* 聚焦時的高亮指示 */
+            background: #1a1a0a;
         }
         .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
         .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
-        .message h1.msg-heading { font-size: 1rem; color: #888; margin: 0 0 5px 0; border: none; }
         
-        /* 輸入區樣式 */
-        .input-row { display: flex; gap: 8px; align-items: flex-end; }
-        #user-input { min-height: 60px; max-height: 150px; margin-bottom: 0; resize: none; }
-        
-        #submit-btn { width: 70px; height: 60px; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem; }
-        
-        /* Utility Row & Checkbox - 修改重點 3 */
-        .utility-row { 
-            display: flex; 
-            gap: 10px; 
-            margin-bottom: 10px; 
-            overflow-x: auto; /* 水平滾動 */
-            padding-bottom: 5px; 
-            align-items: center; 
-            white-space: nowrap; /* 防止按鈕換行變形 */
-            -webkit-overflow-scrolling: touch; /* iOS 平滑滾動 */
+        /* 用戶標題樣式 (降級為 div) */
+        div.msg-heading-user {
+            font-size: 1rem; color: #0088ff; margin: 0 0 5px 0; font-weight: bold;
         }
+
+        /* 輸入區樣式 (修改) */
+        .input-row { display: flex; gap: 8px; align-items: flex-end; } /* align-items: flex-end 確保按鈕在底部對齊 */
+        
+        #user-input { 
+            min-height: 48px; /* 觸控友善 */
+            max-height: 30vh; /* 限制最大高度，避免佔滿螢幕 */
+            margin-bottom: 0; 
+            resize: none; /* 禁止手動調整，改由 JS 自動調整 */
+            overflow-y: hidden; /* 預設隱藏捲軸 */
+        }
+        
+        #submit-btn { 
+            width: 70px; height: auto; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem;
+            min-height: 48px; /* 確保高度一致 */
+        }
+        
+        /* Utility Row & Checkbox */
+        .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
         .utility-row button { 
-            white-space: nowrap; 
-            font-size: 0.9rem; 
-            padding: 8px 12px; 
-            margin: 0; 
-            width: auto; 
-            flex-shrink: 0; 
-            min-height: 44px; 
+            white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; 
+            min-height: 48px; /* 修改：觸控友善高度 */
         }
 
         /* 標準 Checkbox 樣式 (對話頁專用) */
@@ -300,11 +305,10 @@
             padding: 8px 12px; border-radius: 6px;
             font-size: 0.9rem; cursor: pointer; white-space: nowrap;
             user-select: none;
-            min-height: 44px;
-            flex-shrink: 0;
+            min-height: 48px; /* 修改：觸控友善高度 */
         }
         .chat-check-btn input {
-            width: 20px; height: 20px; margin: 0 8px 0 0;
+            width: 24px; height: 24px; margin: 0 8px 0 0;
             accent-color: var(--accent-color);
         }
         .chat-check-btn:has(input:checked) {
@@ -327,7 +331,7 @@
             padding: 15px; font-weight: bold; cursor: pointer;
             background: #222; color: #fff; list-style: none;
             display: flex; align-items: center; justify-content: space-between;
-            min-height: 50px; /* 增加點擊區域 */
+            min-height: 54px; /* 修改：增加點擊區域 */
         }
         details.settings-group summary:focus {
             outline: 3px solid var(--accent-color); outline-offset: -3px;
@@ -382,7 +386,8 @@
         .check-btn {
             display: flex; align-items: center; background: #222; padding: 12px;
             border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
-            min-height: 48px; cursor: pointer;
+            min-height: 48px; /* 修改：觸控友善 */
+            cursor: pointer;
         }
         .check-btn:focus-within { outline: 3px solid var(--accent-color); }
         .check-btn input { width: 24px; height: 24px; margin: 0 15px 0 0; accent-color: var(--accent-color); }
@@ -423,6 +428,7 @@
             background: #222; color: #fff; border-radius: 8px; font-size: 1.1rem;
             cursor: pointer; display: flex; align-items: center;
             transition: background 0.2s, transform 0.1s;
+            min-height: 54px; /* 修改：增加點擊區域 */
         }
         .export-btn-group button:focus, .export-btn-group button:hover {
             background: #333; border-color: var(--accent-color); outline: 2px solid var(--accent-color);
@@ -447,6 +453,7 @@
         .back-btn {
             background: #333; color: #fff; border: 1px solid #666; font-size: 1.2rem;
             padding: 10px 20px; border-radius: 6px; margin-right: 15px; cursor: pointer;
+            min-height: 48px;
         }
         .chandra-header h1 {
             margin: 0; font-size: 1.3rem; color: var(--accent-color); border: none; flex: 1;
@@ -457,6 +464,7 @@
         .radio-option {
             display: flex; align-items: center; padding: 15px; background: #1a1a1a;
             border: 1px solid #444; border-radius: 8px; position: relative;
+            min-height: 54px;
         }
         .radio-option:has(input:checked) {
             border-color: var(--accent-color); background: #2a2a00;
@@ -479,6 +487,7 @@
         .lang-item {
             display: flex; align-items: center; padding: 12px 10px;
             border-bottom: 1px solid #222;
+            min-height: 48px;
         }
         .lang-item:last-child { border-bottom: none; }
         .lang-item input[type="checkbox"] {
@@ -530,8 +539,8 @@
         <!-- A. 對話視圖 (Chat View) -->
         <section id="view-chat" class="view-section active" role="tabpanel" aria-labelledby="tab-chat">
             <div id="chat-container">
-                <div class="message assistant">
-                    <h1 class="msg-heading">AI 助理：</h1>
+                <div class="message assistant" tabindex="-1">
+                    <h1 class="msg-heading">AI 回應：</h1>
                     <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF 進行對話。</div>
                 </div>
                 <div id="chat-output"></div>
@@ -568,7 +577,8 @@
 
         <!-- B. 工具視圖 (Tools View - Reader) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
-            <h2 tabindex="-1" id="tools-title">文字讀取 (Reader)</h2>
+            <!-- 修改：標題降級為 div -->
+            <div class="ui-header" tabindex="-1" id="tools-title">文字讀取 (Reader)</div>
             
             <div class="settings-card" style="border-top: 3px solid var(--accent-color);">
                 <h3>1. 選擇識別模式</h3>
@@ -711,7 +721,8 @@
 
         <!-- C. 設定視圖 (Settings View - 重組版：手風琴佈局) -->
         <section id="view-settings" class="view-section" role="tabpanel" aria-labelledby="tab-settings">
-            <h2 tabindex="-1" id="settings-title">系統設定 (Settings)</h2>
+            <!-- 修改：標題降級為 div -->
+            <div class="ui-header" tabindex="-1" id="settings-title">系統設定 (Settings)</div>
 
             <div id="settings-area">
                 
@@ -1545,6 +1556,19 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             }
         }
 
+        // --- 新增：輸入框自動長高 ---
+        function initAutoGrow() {
+            const tx = document.getElementById('user-input');
+            const onInput = function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            };
+            tx.addEventListener("input", onInput, false);
+            // 初始化時也執行一次
+            tx.setAttribute('style', 'height:' + (tx.scrollHeight) + 'px;overflow-y:hidden;');
+            onInput.call(tx);
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
@@ -1580,6 +1604,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 initPasteImage();
                 initDragAndDrop();
                 initEnterKey();
+                initAutoGrow(); // 啟用自動長高
                 
                 const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
                 toggleChandraBtn(chandraMode && chandraMode.value === 'chandra');
@@ -1694,6 +1719,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             stickyMemory = { type: null, content: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
+            document.getElementById('user-input').style.height = 'auto'; // 重置高度
             selectedFile = null;
             document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
             document.getElementById('upload-btn').classList.remove('active');
@@ -2070,6 +2096,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[追問模式]"));
                 
                 document.getElementById('user-input').value = ""; 
+                document.getElementById('user-input').style.height = 'auto'; // 輸入後重置高度
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
@@ -2086,14 +2113,12 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     activeChatModel // 這裡明確傳入一般對話模型
                 );
 
-                // --- 修改重點 2：AI 回應後自動將焦點轉移至新訊息，觸發朗讀 ---
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
                 
-                // 設定 tabindex=-1 讓 div 可程式化聚焦，但不影響 Tab 順序
-                aiMsg.setAttribute('tabindex', '-1'); 
-                
-                // 強制聚焦，螢幕朗讀器會立即朗讀該元素內容
-                aiMsg.focus(); 
+                // 新增：延遲聚焦以觸發螢幕閱讀器完整朗讀
+                setTimeout(() => { 
+                    aiMsg.focus(); 
+                }, 100);
 
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
@@ -2271,9 +2296,19 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         function showReadyStatus() { updateStatusBar("準備就緒"); }
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
+        // 修改：實現 H1 獨佔與結構降級
         function addMessage(role, content) {
-            const div = document.createElement('div'); div.className = `message ${role}`; div.tabIndex = -1;
-            div.innerHTML = `<h1 class="msg-heading">${role==='user'?'您：':'AI：'}</h1><div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
+            const div = document.createElement('div'); div.className = `message ${role}`; 
+            div.tabIndex = -1; // 確保可被程式聚焦
+            
+            let headerHTML = "";
+            if (role === 'assistant') {
+                headerHTML = `<h1 class="msg-heading">AI 回應：</h1>`;
+            } else {
+                headerHTML = `<div class="msg-heading-user">您：</div>`;
+            }
+
+            div.innerHTML = `${headerHTML}<div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
             document.getElementById('chat-output').appendChild(div); 
             return div;
         }
