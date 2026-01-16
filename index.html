@@ -78,8 +78,8 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
-            font-size: 1.1rem; line-height: 1.6; /* 增加行距，提升可讀性 */
-            height: 100dvh; /* 修改：使用 dvh 解決手機網址列遮擋問題 */
+            font-size: 1.1rem; line-height: 1.6;
+            height: 100dvh; /* 動態視口高度 */
             display: grid;
             grid-template-rows: auto 1fr auto;
             overflow: hidden;
@@ -139,11 +139,11 @@
             padding-bottom: 20px;
         }
         #input-area-wrapper {
-            flex-shrink: 0; /* 修改：確保輸入區不被擠壓 */
+            flex-shrink: 0;
             background: #111;
             border-top: 1px solid var(--border-color);
             padding: 10px;
-            padding-bottom: env(safe-area-inset-bottom, 10px); /* 適配 iPhone 底部橫條 */
+            padding-bottom: env(safe-area-inset-bottom, 10px);
         }
 
         /* 3. 底部導航欄 */
@@ -153,7 +153,7 @@
             display: flex;
             justify-content: space-around;
             align-items: center;
-            height: 70px; /* 保持適當高度 */
+            height: 70px;
             flex-shrink: 0;
             z-index: 200;
             padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -171,7 +171,7 @@
             height: 100%;
             cursor: pointer;
             padding: 5px;
-            min-height: 48px; /* 修改：觸控友善高度 */
+            min-height: 48px;
         }
         .nav-btn span.icon { font-size: 1.5rem; margin-bottom: 4px; display: block; }
         .nav-btn.active {
@@ -183,23 +183,26 @@
 
         /* 通用元件樣式 */
         
-        /* 修改：將原本的 h2 樣式移至 .ui-header，用於介面靜態標題 */
+        /* 靜態 UI 標題 (非 Heading，避免干擾導航) */
         .ui-header { 
             font-size: 1.3rem; color: #88ccff; border-bottom: 2px solid #333; 
             padding-bottom: 5px; margin-top: 0; margin-bottom: 15px;
             font-weight: bold;
         }
-        
-        /* AI 回應專用的 H1 樣式 */
-        h1.msg-heading { 
-            font-size: 1.2rem; 
-            color: #FFFF00; 
-            margin: 0 0 10px 0; 
-            border-bottom: 1px solid #333;
-            padding-bottom: 5px;
+        .ui-subheader {
+            color: #ccc; margin: 15px 0 10px 0; font-size: 1.1rem; font-weight: bold;
         }
-
-        h3 { color: #ccc; margin: 15px 0 10px 0; font-size: 1.1rem; }
+        
+        /* AI 回應專用的 H1 */
+        h1.msg-heading { 
+            font-size: 1.2rem; color: #FFFF00; margin: 0 0 10px 0; 
+            border-bottom: 1px solid #333; padding-bottom: 5px;
+        }
+        
+        /* 用戶標題 */
+        div.msg-heading-user {
+            font-size: 1rem; color: #0088ff; margin: 0 0 5px 0; font-weight: bold;
+        }
 
         input, select, textarea {
             width: 100%; padding: 12px; margin-bottom: 15px;
@@ -215,7 +218,7 @@
             width: 100%; padding: 14px; font-size: 1.1rem; font-weight: bold;
             border-radius: 8px; margin-bottom: 12px; cursor: pointer;
             background-color: var(--button-bg); color: var(--button-text); border: none;
-            min-height: 48px; /* 修改：觸控友善高度 */
+            min-height: 48px;
         }
         button.secondary { background-color: #333; color: #fff; border: 1px solid #777; }
         button.danger { background-color: #550000; color: #ffcccc; border: 1px solid #ff4444; }
@@ -233,7 +236,7 @@
             border-radius: 6px; font-size: 0.95rem; color: var(--segment-text);
             transition: all 0.2s; user-select: none;
             display: flex; align-items: center; justify-content: center;
-            min-height: 48px; /* 修改：觸控友善高度 */
+            min-height: 48px;
         }
         .segmented-control input[type="radio"] { opacity: 0; position: absolute; width: 0; height: 0; }
         .segmented-control input[type="radio"]:checked + label {
@@ -242,15 +245,22 @@
         }
         .segmented-control label:focus-within { outline: 3px solid #fff; }
 
-        /* Reader 結果區 */
+        /* Reader 結果區 (效能優化版) */
         #reader-output-area {
             background: #111; border: 2px solid #444; border-radius: 8px;
             padding: 15px; min-height: 100px; margin-top: 20px;
             white-space: pre-wrap; word-break: break-word; outline: none;
+            /* 針對大量文字的效能優化：讓瀏覽器知道這個區域很高，但只有在可見時才渲染 */
+            content-visibility: auto;
+            contain-intrinsic-size: 1000px; 
         }
         #reader-output-area:focus { outline: 3px solid var(--accent-color); background: #1a1a1a; }
+        
         .reader-page-block {
             border-bottom: 1px dashed #555; padding-bottom: 20px; margin-bottom: 20px;
+            /* 頁面區塊也加入效能優化 */
+            content-visibility: auto;
+            contain-intrinsic-size: 500px;
         }
         .translation-chunk {
             border-left: 3px solid var(--accent-color); padding-left: 10px; margin-bottom: 20px;
@@ -261,68 +271,56 @@
             background: #111; padding: 15px; margin-bottom: 20px;
             border-left: 5px solid var(--border-color);
             border-radius: 4px;
-            outline: none; /* 移除預設邊框，由 focus 狀態管理 */
+            outline: none;
         }
         .message:focus {
-            box-shadow: 0 0 0 2px var(--accent-color); /* 聚焦時的高亮指示 */
+            box-shadow: 0 0 0 2px var(--accent-color);
             background: #1a1a0a;
         }
         .message.user { border-left-color: var(--user-header-color); background: #0a0a1a; }
         .message.assistant { border-left-color: var(--ai-header-color); background: #1a1a0a; }
         
-        /* 用戶標題樣式 (降級為 div) */
-        div.msg-heading-user {
-            font-size: 1rem; color: #0088ff; margin: 0 0 5px 0; font-weight: bold;
-        }
-
-        /* 輸入區樣式 (修改) */
-        .input-row { display: flex; gap: 8px; align-items: flex-end; } /* align-items: flex-end 確保按鈕在底部對齊 */
+        /* 輸入區樣式 */
+        .input-row { display: flex; gap: 8px; align-items: flex-end; }
         
         #user-input { 
-            min-height: 48px; /* 觸控友善 */
-            max-height: 30vh; /* 限制最大高度，避免佔滿螢幕 */
-            margin-bottom: 0; 
-            resize: none; /* 禁止手動調整，改由 JS 自動調整 */
-            overflow-y: hidden; /* 預設隱藏捲軸 */
+            min-height: 48px; max-height: 30vh; margin-bottom: 0; 
+            resize: none; overflow-y: hidden;
         }
         
         #submit-btn { 
             width: 70px; height: auto; margin: 0; flex-shrink: 0; padding: 5px; font-size: 1rem;
-            min-height: 48px; /* 確保高度一致 */
+            min-height: 48px;
         }
         
-        /* Utility Row & Checkbox */
         .utility-row { display: flex; gap: 10px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px; align-items: center; }
         .utility-row button { 
             white-space: nowrap; font-size: 0.9rem; padding: 8px 12px; margin: 0; width: auto; flex-shrink: 0; 
-            min-height: 48px; /* 修改：觸控友善高度 */
+            min-height: 48px;
         }
 
-        /* 標準 Checkbox 樣式 (對話頁專用) */
         .chat-check-btn {
             display: inline-flex; align-items: center;
             background: #333; border: 1px solid #777; color: #fff;
             padding: 8px 12px; border-radius: 6px;
             font-size: 0.9rem; cursor: pointer; white-space: nowrap;
             user-select: none;
-            min-height: 48px; /* 修改：觸控友善高度 */
+            min-height: 48px;
         }
         .chat-check-btn input {
             width: 24px; height: 24px; margin: 0 8px 0 0;
             accent-color: var(--accent-color);
         }
         .chat-check-btn:has(input:checked) {
-            border-color: var(--accent-color);
-            background: #2a2a00;
+            border-color: var(--accent-color); background: #2a2a00;
         }
 
-        /* --- 設定頁重構與手風琴樣式 --- */
+        /* 設定頁樣式 */
         .settings-card {
             background: #1a1a1a; padding: 15px; border-radius: 8px;
             border: 1px solid #333; margin-bottom: 20px;
         }
         
-        /* Accordion Style */
         details.settings-group {
             background: #151515; border: 1px solid #333; border-radius: 8px;
             margin-bottom: 15px; overflow: hidden;
@@ -331,7 +329,7 @@
             padding: 15px; font-weight: bold; cursor: pointer;
             background: #222; color: #fff; list-style: none;
             display: flex; align-items: center; justify-content: space-between;
-            min-height: 54px; /* 修改：增加點擊區域 */
+            min-height: 54px;
         }
         details.settings-group summary:focus {
             outline: 3px solid var(--accent-color); outline-offset: -3px;
@@ -342,7 +340,6 @@
         details.settings-group[open] summary { border-bottom: 1px solid #333; }
         .details-content { padding: 15px; }
 
-        /* Info Card Style */
         .info-card {
             background: #111; border: 1px solid #444; border-radius: 8px;
             padding: 15px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px;
@@ -368,7 +365,7 @@
         .editor-body { flex: 1; padding: 15px; overflow: hidden; display: flex; }
         #fullscreen-textarea {
             width: 100%; height: 100%; background: #111; color: #fff;
-            border: 1px solid #444; padding: 15px; font-size: 1.2rem; /* 大字體 */
+            border: 1px solid #444; padding: 15px; font-size: 1.2rem;
             font-family: monospace; resize: none; line-height: 1.6;
             border-radius: 8px;
         }
@@ -379,15 +376,14 @@
             width: 100%; max-height: 300px; overflow-y: auto;
             background: #000; color: #0f0; border: 1px solid #333;
             padding: 10px; font-family: monospace; font-size: 0.85rem;
-            white-space: pre-wrap; word-break: break-all; /* 防止撐破 */
+            white-space: pre-wrap; word-break: break-all;
             border-radius: 6px;
         }
 
         .check-btn {
             display: flex; align-items: center; background: #222; padding: 12px;
             border-radius: 6px; margin-bottom: 10px; border: 1px solid #444;
-            min-height: 48px; /* 修改：觸控友善 */
-            cursor: pointer;
+            min-height: 48px; cursor: pointer;
         }
         .check-btn:focus-within { outline: 3px solid var(--accent-color); }
         .check-btn input { width: 24px; height: 24px; margin: 0 15px 0 0; accent-color: var(--accent-color); }
@@ -405,7 +401,7 @@
             display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px;
         }
         
-        /* 匯出選單模態視窗 */
+        /* 匯出選單 */
         #export-modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 9999;
@@ -428,7 +424,7 @@
             background: #222; color: #fff; border-radius: 8px; font-size: 1.1rem;
             cursor: pointer; display: flex; align-items: center;
             transition: background 0.2s, transform 0.1s;
-            min-height: 54px; /* 修改：增加點擊區域 */
+            min-height: 54px;
         }
         .export-btn-group button:focus, .export-btn-group button:hover {
             background: #333; border-color: var(--accent-color); outline: 2px solid var(--accent-color);
@@ -516,11 +512,8 @@
             .nav-btn.active { border-top: none; border-left-color: var(--accent-color); }
             main { grid-row: 2; grid-column: 2; }
             
-            /* 設定頁電腦版佈局調整 */
             .task-btn-grid { grid-template-columns: repeat(2, 1fr); }
             .dashboard-row { flex-direction: row; justify-content: space-between; align-items: center; }
-            
-            /* 電腦版設定頁細節 */
             details.settings-group { margin-bottom: 20px; }
             #error-log-area { max-height: 400px; }
         }
@@ -546,25 +539,16 @@
                 <div id="chat-output"></div>
             </div>
 
-            <!-- 輸入控制區 (固定在對話頁底部) -->
+            <!-- 輸入控制區 -->
             <div id="input-area-wrapper">
                 <div class="utility-row">
-                    <!-- 1. 檔案上傳按鈕 -->
                     <button type="button" id="upload-btn" class="secondary" onclick="document.getElementById('file-input').click()">📁 檔案/拍照</button>
-                    
-                    <!-- 2. 匯出按鈕 (新功能) -->
                     <button type="button" id="export-trigger-btn" class="secondary" onclick="exportManager.openMenu('export-trigger-btn')">📤 匯出</button>
-
-                    <!-- 3. 暫停傳送 Checkbox -->
                     <label class="chat-check-btn">
                         <input type="checkbox" id="pause-send">
                         <span>暫停發送</span>
                     </label>
-
-                    <!-- 4. 清除按鈕 -->
                     <button type="button" id="new-chat-btn" class="danger" onclick="resetConversation()">🗑️ 清除</button>
-                    
-                    <!-- 隱藏的 File Input -->
                     <input type="file" id="file-input" class="visually-hidden" accept="*/*" onchange="handleFileSelect()">
                 </div>
                 
@@ -577,11 +561,11 @@
 
         <!-- B. 工具視圖 (Tools View - Reader) -->
         <section id="view-tools" class="view-section" role="tabpanel" aria-labelledby="tab-tools">
-            <!-- 修改：標題降級為 div -->
+            <!-- UI 標題降級為 div -->
             <div class="ui-header" tabindex="-1" id="tools-title">文字讀取 (Reader)</div>
             
             <div class="settings-card" style="border-top: 3px solid var(--accent-color);">
-                <h3>1. 選擇識別模式</h3>
+                <div class="ui-subheader">1. 選擇識別模式</div>
                 <div class="segmented-control" role="group" aria-label="識別模式選擇">
                     <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra" onchange="toggleChandraBtn(true)">
                     <label for="mode-chandra">Chandra<br>(整份)</label>
@@ -594,14 +578,13 @@
                 </div>
                 <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">* Chandra 適合快速提取整份文件；混合模式適合精準校對。</p>
 
-                <!-- Chandra 設定按鈕 (動態顯示) -->
                 <button type="button" id="btn-open-chandra-settings" class="action-btn secondary hidden" onclick="openChandraSettings()">
                     ⚙️ Chandra 進階設定
                 </button>
 
-                <h3>2. 選擇檔案與執行</h3>
-                <!-- 單一上傳入口 -->
-                <input type="file" id="reader-input" class="visually-hidden" accept="image/*,application/pdf" onchange="handleReaderFileSelect()">
+                <div class="ui-subheader">2. 選擇檔案與執行</div>
+                <!-- 確保 file input 可重複選取相同檔案 -->
+                <input type="file" id="reader-input" class="visually-hidden" accept="image/*,application/pdf" onclick="this.value=''" onchange="handleReaderFileSelect()">
                 
                 <button type="button" id="reader-start-btn" class="action-btn high-contrast" onclick="document.getElementById('reader-input').click()">
                     📷 拍照 / 選擇文件
@@ -617,16 +600,18 @@
             <!-- 結果顯示與操作區 -->
             <div id="reader-result-wrapper" class="hidden">
                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px;">
-                    <h3 style="margin:0;">識別結果：</h3>
+                    <div class="ui-subheader" style="margin:0;">操作：</div>
                     <button type="button" class="action-btn secondary" style="width:auto; margin:0; padding:8px 15px;" onclick="exportManager.openMenu(null, 'reader')">📤 匯出 / 複製</button>
                 </div>
                 
-                <!-- 結果輸出容器，支援焦點導航 -->
-                <div id="reader-output-area" role="region" aria-label="文字識別結果內容" tabindex="-1"></div>
+                <!-- 結果輸出容器：支援焦點導航，加入 H1 標題作為朗讀起點 -->
+                <div id="reader-output-area" tabindex="-1">
+                     <!-- JS 將會在此動態插入 <h1 class="msg-heading">辨識結果 (Recognition Result)</h1> -->
+                </div>
             </div>
         </section>
 
-        <!-- 新增: Chandra 設定視圖 (獨立分頁) -->
+        <!-- Chandra 設定視圖 -->
         <section id="view-chandra-settings" class="view-section" role="dialog" aria-modal="false" aria-labelledby="chandra-settings-title">
             <div class="chandra-header">
                 <button type="button" class="back-btn" onclick="saveChandraSettings()" aria-label="返回並儲存">&lt; 返回</button>
@@ -634,37 +619,26 @@
             </div>
             
             <div style="padding: 15px; overflow-y: auto; flex: 1;">
-                <!-- 1. 準確度模式 -->
                 <div class="settings-card">
                     <fieldset style="border:none; padding:0; margin:0;">
                         <legend style="color:#88ccff; font-weight:bold; font-size:1.2rem; margin-bottom:10px;">1. 準確度模式 (Mode)</legend>
                         <div class="radio-group">
                             <label class="radio-option">
                                 <input type="radio" name="chandra-mode" value="fast">
-                                <div class="radio-info">
-                                    <strong>🟢 快速 (Fast)</strong>
-                                    <span>適合簡單文件，速度最快。</span>
-                                </div>
+                                <div class="radio-info"><strong>🟢 快速 (Fast)</strong><span>適合簡單文件，速度最快。</span></div>
                             </label>
                             <label class="radio-option">
                                 <input type="radio" name="chandra-mode" value="balanced" checked>
-                                <div class="radio-info">
-                                    <strong>🔵 平衡 (Balanced)</strong>
-                                    <span>(預設) 推薦使用。</span>
-                                </div>
+                                <div class="radio-info"><strong>🔵 平衡 (Balanced)</strong><span>(預設) 推薦使用。</span></div>
                             </label>
                             <label class="radio-option">
                                 <input type="radio" name="chandra-mode" value="accurate">
-                                <div class="radio-info">
-                                    <strong>🟣 精準 (Accurate)</strong>
-                                    <span>適合複雜排版，速度較慢。</span>
-                                </div>
+                                <div class="radio-info"><strong>🟣 精準 (Accurate)</strong><span>適合複雜排版，速度較慢。</span></div>
                             </label>
                         </div>
                     </fieldset>
                 </div>
 
-                <!-- 2. 辨識語言 -->
                 <div class="settings-card">
                     <fieldset style="border:none; padding:0; margin:0;">
                         <legend style="color:#88ccff; font-weight:bold; font-size:1.2rem; margin-bottom:10px;">2. 辨識語言 (Languages)</legend>
@@ -678,32 +652,27 @@
                                 <div class="radio-info"><strong>🔘 自訂語言 (Custom)</strong></div>
                             </label>
                         </div>
-
-                        <!-- 展開的語言清單 -->
                         <div id="custom-lang-wrapper" class="hidden" style="margin-top: 15px;">
                             <input type="text" id="lang-search" class="lang-search-box" placeholder="輸入語言搜尋..." oninput="filterLanguages()">
-                            <div id="language-list-container">
-                                <!-- JS 動態生成 -->
-                            </div>
+                            <div id="language-list-container"></div>
                         </div>
                     </fieldset>
                 </div>
 
-                <!-- 3. 進階開關 -->
                 <div class="settings-card">
-                    <h3 style="color:#88ccff; font-size:1.2rem; margin-top:0;">3. 進階開關 (Advanced)</h3>
+                    <div class="ui-subheader" style="margin-top:0;">3. 進階開關 (Advanced)</div>
                     <label class="check-btn">
                         <input type="checkbox" id="chandra-force-ocr"> 
                         <div style="display:flex; flex-direction:column;">
                             <span>🔲 強制 OCR (Force OCR)</span>
-                            <span style="font-size:0.85rem; color:#aaa;">即使 PDF 有文字層也重新識別 (修復亂碼用)</span>
+                            <span style="font-size:0.85rem; color:#aaa;">即使 PDF 有文字層也重新識別</span>
                         </div>
                     </label>
                     <label class="check-btn">
                         <input type="checkbox" id="chandra-use-llm">
                         <div style="display:flex; flex-direction:column;">
                             <span>🔲 AI 修復 (Use LLM)</span>
-                            <span style="font-size:0.85rem; color:#aaa;">使用 AI 修復表格與公式 (需較長時間)</span>
+                            <span style="font-size:0.85rem; color:#aaa;">使用 AI 修復表格與公式</span>
                         </div>
                     </label>
                     <label class="check-btn">
@@ -713,20 +682,16 @@
                 </div>
             </div>
 
-            <!-- 底部按鈕 -->
             <div style="padding:15px; background:#111; border-top:1px solid #444; flex-shrink:0;">
                 <button type="button" class="action-btn" onclick="saveChandraSettings()">💾 儲存並返回</button>
             </div>
         </section>
 
-        <!-- C. 設定視圖 (Settings View - 重組版：手風琴佈局) -->
+        <!-- C. 設定視圖 -->
         <section id="view-settings" class="view-section" role="tabpanel" aria-labelledby="tab-settings">
-            <!-- 修改：標題降級為 div -->
             <div class="ui-header" tabindex="-1" id="settings-title">系統設定 (Settings)</div>
 
             <div id="settings-area">
-                
-                <!-- 1. 全域配置儀表板 (Dashboard) -->
                 <details class="settings-group" open>
                     <summary>📊 當前配置 (Status)</summary>
                     <div class="details-content">
@@ -736,7 +701,6 @@
                     </div>
                 </details>
 
-                <!-- 2. 核心控制區 (Source & Credentials) -->
                 <details class="settings-group" open>
                     <summary>🤖 模型來源與設定</summary>
                     <div class="details-content">
@@ -749,41 +713,29 @@
                             <option value="mistral">Mistral AI</option>
                             <option value="perplexity">Perplexity</option>
                         </select>
-
                         <label>API Key (主要服務商):</label>
                         <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
-                        
                         <div style="margin: 15px 0; border-top: 1px dashed #333; padding-top: 15px;">
                             <label>Chandra OCR API Key (Datalab 專用):</label>
                             <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
                         </div>
-                        
-                        <!-- 隱私過濾 Checkbox -->
                         <label class="check-btn" style="padding: 8px;">
                             <input type="checkbox" id="privacy-filter" onchange="handleModelFilter()">
                             <span style="font-size: 0.95rem;">🛡️ 只列出保障私隱的模型 (排除免費版)</span>
                         </label>
-                        
                         <label>模型過濾 (Filter):</label>
                         <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, gpt)..." oninput="handleModelFilter()">
-                        
                         <div style="display:flex; gap:10px; margin-bottom: 10px;">
                             <select id="model-select" onchange="handleModelSelectChange()" style="margin-bottom:0; flex:1;"></select>
                             <button type="button" id="refresh-btn" class="secondary" onclick="fetchOnlineModels()" style="width:auto; margin:0; padding:0 15px;">🔄 更新</button>
                         </div>
-                        
-                        <!-- 新增：手機友善的詳細資訊卡片 -->
-                        <div id="model-info-card" class="info-card hidden" role="status" aria-label="模型詳細資訊">
-                            <!-- JS 動態填充 -->
-                        </div>
-                        
+                        <div id="model-info-card" class="info-card hidden" role="status" aria-label="模型詳細資訊"></div>
                         <div id="custom-model-wrapper" class="hidden">
                             <input type="text" id="custom-model-input" placeholder="手動輸入模型 ID" onchange="handleCustomInputChange()">
                         </div>
                     </div>
                 </details>
 
-                <!-- 3. 任務指派區 (Assignment) -->
                 <details class="settings-group">
                     <summary>👇 模型分工指派</summary>
                     <div class="details-content">
@@ -797,7 +749,6 @@
                     </div>
                 </details>
 
-                <!-- 4. 系統行為 (Behavior) -->
                 <details class="settings-group">
                     <summary>⚙️ 系統行為</summary>
                     <div class="details-content">
@@ -812,7 +763,6 @@
                     </div>
                 </details>
 
-                <!-- 5. 系統指令 (System Prompts) -->
                 <details class="settings-group">
                     <summary>📝 系統指令 (Prompts)</summary>
                     <div class="details-content">
@@ -821,7 +771,6 @@
                             <button type="button" id="tab-ocr" class="secondary" onclick="switchPromptEditor('ocr')">OCR 專用</button>
                             <button type="button" id="tab-translate" class="secondary" onclick="switchPromptEditor('translate')">翻譯專用</button>
                         </div>
-                        
                         <div style="position: relative;">
                              <button type="button" class="secondary" style="width:100%; margin-bottom:5px;" onclick="openFullscreenEditor()">
                                 🔍 開啟全螢幕專注編輯模式 (Focus Mode)
@@ -831,7 +780,6 @@
                     </div>
                 </details>
 
-                <!-- 6. 錯誤日誌 (Logs) -->
                 <details class="settings-group">
                     <summary>🐛 錯誤日誌 (Debug)</summary>
                     <div class="details-content">
@@ -843,7 +791,6 @@
                     </div>
                 </details>
 
-                <!-- 底部操作列 (Sticky) -->
                 <div style="position:sticky; bottom:0; background:#000; padding:10px 0; border-top:1px solid #333; z-index:10;">
                     <button type="button" class="action-btn" onclick="saveSettings()">💾 儲存所有設定</button>
                     <button type="button" class="action-btn secondary" onclick="restoreDefaults()">恢復預設值</button>
@@ -855,50 +802,33 @@
     <!-- 3. 底部導航欄 -->
     <nav class="bottom-nav" role="tablist">
         <button type="button" class="nav-btn active" id="nav-chat" role="tab" aria-selected="true" aria-controls="view-chat" onclick="switchTab('chat')">
-            <span class="icon">💬</span>
-            <span>對話</span>
+            <span class="icon">💬</span><span>對話</span>
         </button>
         <button type="button" class="nav-btn" id="nav-tools" role="tab" aria-selected="false" aria-controls="view-tools" onclick="switchTab('tools')">
-            <span class="icon">🛠️</span>
-            <span>文字讀取</span>
+            <span class="icon">🛠️</span><span>文字讀取</span>
         </button>
         <button type="button" class="nav-btn" id="nav-settings" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')">
-            <span class="icon">⚙️</span>
-            <span>設定</span>
+            <span class="icon">⚙️</span><span>設定</span>
         </button>
     </nav>
 
-    <!-- 4. 匯出功能模態視窗 -->
+    <!-- 4. 匯出模態視窗 -->
     <div id="export-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="export-title">
         <div id="export-modal">
             <h2 id="export-title">匯出選項 (Export)</h2>
             <div class="export-btn-group">
-                <button type="button" id="exp-copy-to-chat" class="hidden" onclick="exportManager.copyToChat()">
-                    <span class="icon">💬</span> 複製到對話輸入框
-                </button>
-                <button type="button" id="exp-copy-last" onclick="exportManager.copyLast()">
-                    <span class="icon">📋</span> 複製最後回應
-                </button>
-                <button type="button" onclick="exportManager.copyAll()">
-                    <span class="icon">📑</span> 複製完整對話 / 全文
-                </button>
-                <button type="button" onclick="exportManager.downloadHTML()">
-                    <span class="icon">🌐</span> 下載為 HTML (網頁)
-                </button>
-                <button type="button" onclick="exportManager.downloadMarkdown()">
-                    <span class="icon">📝</span> 下載為 Markdown (筆記)
-                </button>
-                <button type="button" onclick="exportManager.downloadTXT()">
-                    <span class="icon">📄</span> 下載為 TXT (純文字)
-                </button>
-                <button type="button" class="close-modal-btn" onclick="exportManager.closeMenu()">
-                    <span class="icon">❌</span> 取消 / 關閉
-                </button>
+                <button type="button" id="exp-copy-to-chat" class="hidden" onclick="exportManager.copyToChat()"><span class="icon">💬</span> 複製到對話輸入框</button>
+                <button type="button" id="exp-copy-last" onclick="exportManager.copyLast()"><span class="icon">📋</span> 複製最後回應</button>
+                <button type="button" onclick="exportManager.copyAll()"><span class="icon">📑</span> 複製完整對話 / 全文</button>
+                <button type="button" onclick="exportManager.downloadHTML()"><span class="icon">🌐</span> 下載為 HTML (網頁)</button>
+                <button type="button" onclick="exportManager.downloadMarkdown()"><span class="icon">📝</span> 下載為 Markdown (筆記)</button>
+                <button type="button" onclick="exportManager.downloadTXT()"><span class="icon">📄</span> 下載為 TXT (純文字)</button>
+                <button type="button" class="close-modal-btn" onclick="exportManager.closeMenu()"><span class="icon">❌</span> 取消 / 關閉</button>
             </div>
         </div>
     </div>
 
-    <!-- 5. 全螢幕編輯器模態視窗 -->
+    <!-- 5. 全螢幕編輯器 -->
     <dialog id="fullscreen-editor">
         <div class="editor-header">
             <h2 style="margin:0; font-size:1.2rem; border:none; color:#fff;">全螢幕編輯 (Focus Mode)</h2>
@@ -913,29 +843,21 @@
     </dialog>
 
     <script>
-        // --- 核心變數：Cloudflare Worker 代理 ---
         const USER_WORKER_URL = "https://ai-helper-for-blind.cyeric20.workers.dev/";
-
-        // --- 全域變數 ---
         let stickyMemory = { type: null, content: null, mime: null, count: 0 };
         let lastActiveTabId = 'chat'; 
         let activeReaderController = null;
-        
-        // --- 新增：活躍的對話狀態變數 (與 UI 狀態分離) ---
         let activeChatProvider = localStorage.getItem('provider') || 'gemini';
         let activeChatModel = localStorage.getItem(`${activeChatProvider}_model`) || PROVIDERS[activeChatProvider].defaultModel;
 
-        // --- 核心 1: 分頁切換邏輯 ---
         function switchTab(tabId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(el => {
                 el.classList.remove('active');
                 el.setAttribute('aria-selected', 'false');
             });
-
             const targetView = document.getElementById(`view-${tabId}`);
             const targetNav = document.getElementById(`nav-${tabId}`);
-            
             if (targetView && targetNav) {
                 targetView.classList.add('active');
                 targetNav.classList.add('active');
@@ -943,18 +865,12 @@
                 if (tabId === 'chat') document.getElementById('user-input').focus();
                 else { const title = document.getElementById(`${tabId}-title`); if (title) title.focus(); }
             }
-            
-            if (tabId !== 'settings') {
-                lastActiveTabId = tabId;
-            }
+            if (tabId !== 'settings') lastActiveTabId = tabId;
         }
 
-        // --- Chandra 語言列表常數 ---
         const CHANDRA_LANGUAGES = [
-            {code:'zh', name:'Chinese (Traditional / Simplified)'},
-            {code:'en', name:'English'},
-            {code:'ja', name:'Japanese'},
-            {code:'ko', name:'Korean'},
+            {code:'zh', name:'Chinese (Traditional / Simplified)'}, {code:'en', name:'English'},
+            {code:'ja', name:'Japanese'}, {code:'ko', name:'Korean'},
             {code:'af', name:'Afrikaans'}, {code:'az', name:'Azerbaijani'}, {code:'be', name:'Belarusian'},
             {code:'bs', name:'Bosnian'}, {code:'bg', name:'Bulgarian'}, {code:'ca', name:'Catalan'},
             {code:'hr', name:'Croatian'}, {code:'cs', name:'Czech'}, {code:'da', name:'Danish'},
@@ -977,17 +893,14 @@
             {code:'ur', name:'Urdu'}, {code:'vi', name:'Vietnamese'}
         ];
 
-        // --- Chandra 設定邏輯 ---
         function toggleChandraBtn(show) {
             const btn = document.getElementById('btn-open-chandra-settings');
-            if(show) btn.classList.remove('hidden');
-            else btn.classList.add('hidden');
+            if(show) btn.classList.remove('hidden'); else btn.classList.add('hidden');
         }
 
         function openChandraSettings() {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            const view = document.getElementById('view-chandra-settings');
-            view.classList.add('active');
+            document.getElementById('view-chandra-settings').classList.add('active');
             
             const mode = localStorage.getItem('chandra_mode') || 'balanced';
             document.querySelector(`input[name="chandra-mode"][value="${mode}"]`).checked = true;
@@ -1007,15 +920,11 @@
         function renderLanguageList() {
             const container = document.getElementById('language-list-container');
             const savedLangs = JSON.parse(localStorage.getItem('chandra_selected_langs') || '[]');
-            
             container.innerHTML = '';
             CHANDRA_LANGUAGES.forEach(lang => {
                 const div = document.createElement('lang-item');
                 div.className = 'lang-item';
-                div.innerHTML = `
-                    <input type="checkbox" id="lang-${lang.code}" value="${lang.code}" ${savedLangs.includes(lang.code) ? 'checked' : ''}>
-                    <label for="lang-${lang.code}">${lang.name}</label>
-                `;
+                div.innerHTML = `<input type="checkbox" id="lang-${lang.code}" value="${lang.code}" ${savedLangs.includes(lang.code) ? 'checked' : ''}><label for="lang-${lang.code}">${lang.name}</label>`;
                 container.appendChild(div);
             });
         }
@@ -1030,18 +939,11 @@
 
         function toggleLangList(show) {
             const wrapper = document.getElementById('custom-lang-wrapper');
-            if(show) {
-                wrapper.classList.remove('hidden');
-                document.getElementById('lang-search').focus();
-            } else {
-                wrapper.classList.add('hidden');
-            }
+            if(show) { wrapper.classList.remove('hidden'); document.getElementById('lang-search').focus(); } else wrapper.classList.add('hidden');
         }
 
         function saveChandraSettings() {
-            const mode = document.querySelector('input[name="chandra-mode"]:checked').value;
-            localStorage.setItem('chandra_mode', mode);
-            
+            localStorage.setItem('chandra_mode', document.querySelector('input[name="chandra-mode"]:checked').value);
             const langMode = document.querySelector('input[name="chandra-lang-mode"]:checked').value;
             localStorage.setItem('chandra_lang_mode', langMode);
             
@@ -1050,82 +952,56 @@
                 document.querySelectorAll('#language-list-container input:checked').forEach(cb => selected.push(cb.value));
                 localStorage.setItem('chandra_selected_langs', JSON.stringify(selected));
             }
-
             localStorage.setItem('chandra_force_ocr', document.getElementById('chandra-force-ocr').checked);
             localStorage.setItem('chandra_use_llm', document.getElementById('chandra-use-llm').checked);
             localStorage.setItem('chandra_paginate', document.getElementById('chandra-paginate').checked);
-
             playAudioCue('success');
             document.getElementById('view-chandra-settings').classList.remove('active');
             document.getElementById('view-tools').classList.add('active');
-            
-            setTimeout(() => {
-                const btn = document.getElementById('btn-open-chandra-settings');
-                if(btn) btn.focus();
-            }, 100);
+            setTimeout(() => { const btn = document.getElementById('btn-open-chandra-settings'); if(btn) btn.focus(); }, 100);
         }
 
-        // --- 核心 2: 匯出管理器 (Export Manager) ---
         class ExportManager {
             constructor() {
                 this.modalOverlay = document.getElementById('export-modal-overlay');
                 this.triggerElementId = null;
                 this.sourceMode = 'chat'; 
             }
-
             openMenu(triggerId, mode = 'chat') {
                 this.triggerElementId = triggerId;
                 this.sourceMode = mode;
-                
                 const copyToChatBtn = document.getElementById('exp-copy-to-chat');
-                if (mode === 'reader') {
-                    copyToChatBtn.classList.remove('hidden');
-                } else {
-                    copyToChatBtn.classList.add('hidden');
-                }
-
+                if (mode === 'reader') copyToChatBtn.classList.remove('hidden'); else copyToChatBtn.classList.add('hidden');
                 this.modalOverlay.style.display = 'flex';
-                setTimeout(() => {
-                    if (mode === 'reader') copyToChatBtn.focus();
-                    else document.getElementById('exp-copy-last').focus();
-                }, 100);
+                setTimeout(() => { if (mode === 'reader') copyToChatBtn.focus(); else document.getElementById('exp-copy-last').focus(); }, 100);
             }
-
             closeMenu() {
                 this.modalOverlay.style.display = 'none';
-                if (this.triggerElementId) {
-                    const el = document.getElementById(this.triggerElementId);
-                    if(el) el.focus();
-                }
+                if (this.triggerElementId) { const el = document.getElementById(this.triggerElementId); if(el) el.focus(); }
             }
-
             getContentData() {
                 if (this.sourceMode === 'reader') {
                     const el = document.getElementById('reader-output-area');
-                    const text = el ? el.innerText : "";
-                    const html = el ? el.innerHTML : "";
-                    return { text: text, markdown: text, html: html };
+                    // 移除 H1 標題以便純文字複製
+                    const clone = el.cloneNode(true);
+                    const h1 = clone.querySelector('h1.msg-heading');
+                    if(h1) h1.remove();
+                    return { text: clone.innerText.trim(), markdown: clone.innerText.trim(), html: clone.innerHTML };
                 }
-
                 if (chatHistory.length > 0) {
-                    let fullText = "";
-                    let fullMd = "";
-                    let lastReply = "";
-                    
+                    let fullText = "", fullMd = "", lastReply = "";
                     chatHistory.forEach(msg => {
                         const roleName = msg.role === 'user' ? 'User' : 'AI';
                         fullText += `[${roleName}]\n${msg.content}\n\n`;
                         fullMd += `## ${roleName}\n${msg.content}\n\n`;
                         if (msg.role === 'assistant') lastReply = msg.content;
                     });
-                    
                     return { text: fullText, markdown: fullMd, last: lastReply, isHistory: true };
                 } else {
                     const el = document.getElementById('chat-output');
                     return { text: el.innerText, markdown: el.innerText, html: el.innerHTML };
                 }
             }
-
             copyToChat() {
                 const data = this.getContentData();
                 if (!data.text) return showTransientStatus("無內容可複製", 'error');
@@ -1135,54 +1011,30 @@
                 inputBox.focus();
                 inputBox.selectionStart = inputBox.selectionEnd = data.text.length;
                 this.closeMenu();
-                showTransientStatus("內容已貼上至輸入框，請按 Enter 發送");
+                showTransientStatus("內容已貼上至輸入框");
             }
-
             copyLast() {
                 const data = this.getContentData();
                 const content = data.last || data.text;
                 if (!content) return showTransientStatus("無內容可複製", 'error');
-                navigator.clipboard.writeText(content).then(() => {
-                    showTransientStatus("已複製最後回應");
-                    this.closeMenu();
-                });
+                navigator.clipboard.writeText(content).then(() => { showTransientStatus("已複製"); this.closeMenu(); });
             }
-
             copyAll() {
                 const data = this.getContentData();
                 if (!data.text) return showTransientStatus("無內容可複製", 'error');
-                navigator.clipboard.writeText(data.text).then(() => {
-                    showTransientStatus("已複製全部內容");
-                    this.closeMenu();
-                });
+                navigator.clipboard.writeText(data.text).then(() => { showTransientStatus("已複製全部"); this.closeMenu(); });
             }
-
-            downloadTXT() {
-                const data = this.getContentData();
-                this._download(data.text, 'export.txt', 'text/plain');
-            }
-
-            downloadMarkdown() {
-                const data = this.getContentData();
-                let content = data.markdown;
-                if (!content) content = data.text;
-                this._download(content, 'export.md', 'text/markdown');
-            }
-
+            downloadTXT() { const data = this.getContentData(); this._download(data.text, 'export.txt', 'text/plain'); }
+            downloadMarkdown() { const data = this.getContentData(); this._download(data.markdown || data.text, 'export.md', 'text/markdown'); }
             downloadHTML() {
                 let bodyContent = "";
                 const data = this.getContentData();
-                
                 if (data.isHistory) {
                     chatHistory.forEach(msg => {
                         const roleClass = msg.role === 'user' ? 'user' : 'assistant';
                         const roleName = msg.role === 'user' ? 'User' : 'AI';
                         const safeHTML = DOMPurify.sanitize(marked.parse(msg.content));
-                        bodyContent += `
-                            <div class="message ${roleClass}" style="margin-bottom:20px; padding:15px; border-left:5px solid ${msg.role==='user'?'#0088ff':'#FFFF00'}; background:#111;">
-                                <h3 style="margin:0 0 10px 0; color:#888;">${roleName}</h3>
-                                <div style="color:#fff;">${safeHTML}</div>
-                            </div>`;
+                        bodyContent += `<div class="message ${roleClass}" style="margin-bottom:20px; padding:15px; border-left:5px solid ${msg.role==='user'?'#0088ff':'#FFFF00'}; background:#111;"><h3 style="margin:0 0 10px 0; color:#888;">${roleName}</h3><div style="color:#fff;">${safeHTML}</div></div>`;
                     });
                 } else {
                     let sourceId = this.sourceMode === 'reader' ? 'reader-output-area' : 'chat-output';
@@ -1190,67 +1042,40 @@
                     clone.querySelectorAll('button, script, style').forEach(el => el.remove());
                     bodyContent = clone.innerHTML;
                 }
-
-                const finalHTML = `<!DOCTYPE html><html lang="zh-HK"><head><meta charset="UTF-8"><title>Exported Chat</title><style>body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; } a { color: #FFFF00; } pre { background: #222; padding: 10px; overflow-x: auto; } code { font-family: monospace; } img { max-width: 100%; height: auto; }</style></head><body><h1>紀錄匯出 (${new Date().toLocaleString()})</h1><hr style="border-color:#333;">${bodyContent}</body></html>`;
+                const finalHTML = `<!DOCTYPE html><html lang="zh-HK"><head><meta charset="UTF-8"><title>Export</title><style>body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; } a { color: #FFFF00; } pre { background: #222; padding: 10px; overflow-x: auto; } code { font-family: monospace; } img { max-width: 100%; height: auto; }</style></head><body><h1>紀錄匯出 (${new Date().toLocaleString()})</h1><hr style="border-color:#333;">${bodyContent}</body></html>`;
                 this._download(finalHTML, 'export.html', 'text/html');
             }
-
             _download(content, filename, mimeType) {
-                if (!content) return showTransientStatus("無內容可匯出", 'error');
+                if (!content) return showTransientStatus("無內容", 'error');
                 const blob = new Blob([content], { type: mimeType });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                showTransientStatus(`已下載 ${filename}`);
-                this.closeMenu();
+                showTransientStatus(`已下載 ${filename}`); this.closeMenu();
             }
         }
-
         const exportManager = new ExportManager();
 
-        // --- 全螢幕編輯器邏輯 (NEW) ---
         function openFullscreenEditor() {
             const promptArea = document.getElementById('system-prompt');
             const fullArea = document.getElementById('fullscreen-textarea');
             const dialog = document.getElementById('fullscreen-editor');
-            
-            fullArea.value = promptArea.value;
-            dialog.showModal();
-            fullArea.focus();
+            fullArea.value = promptArea.value; dialog.showModal(); fullArea.focus();
         }
-
         function closeFullscreenEditor(save) {
             const promptArea = document.getElementById('system-prompt');
             const fullArea = document.getElementById('fullscreen-textarea');
             const dialog = document.getElementById('fullscreen-editor');
-            
-            if (save) {
-                promptArea.value = fullArea.value;
-                showTransientStatus("指令已更新");
-            }
-            dialog.close();
-            promptArea.focus();
+            if (save) { promptArea.value = fullArea.value; showTransientStatus("指令已更新"); }
+            dialog.close(); promptArea.focus();
         }
-
-        // --- 日誌顯示邏輯 (NEW) ---
         function toggleLogWrap(checkbox) {
             const area = document.getElementById('error-log-area');
-            if (checkbox.checked) {
-                area.style.whiteSpace = 'pre-wrap';
-                area.style.wordBreak = 'break-all';
-            } else {
-                area.style.whiteSpace = 'pre';
-                area.style.wordBreak = 'normal';
-            }
+            if (checkbox.checked) { area.style.whiteSpace = 'pre-wrap'; area.style.wordBreak = 'break-all'; } else { area.style.whiteSpace = 'pre'; area.style.wordBreak = 'normal'; }
         }
 
-        // --- 核心 3: 原始邏輯保留與增強 ---
-        
         class UniversalTextNormalizer {
             static getScriptType(char) {
                 if (!char) return 'other';
@@ -1282,10 +1107,7 @@
                         else processed += curr + " ";
                     } else { processed += curr; }
                 }
-                processed = processed.replace(/([\u2e80-\u9fff])\s+([\u2e80-\u9fff])/g, "$1$2");
-                processed = processed.replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2");
-                processed = processed.replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2");
-                return processed.replace(/\n{3,}/g, "\n\n").trim();
+                return processed.replace(/([\u2e80-\u9fff])\s+([\u2e80-\u9fff])/g, "$1$2").replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2").replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2").replace(/\n{3,}/g, "\n\n").trim();
             }
         }
 
@@ -1299,202 +1121,11 @@
             playAudioCue('error');
         };
 
-        window.addEventListener('pdfjs-loaded', () => {
-            showReadyStatus();
-        });
+        window.addEventListener('pdfjs-loaded', () => { showReadyStatus(); });
 
-        const DEFAULT_CHAT_PROMPT = `# PERSONA
-You are a top-tier AI Visual and Information Assistant dedicated to serving visually impaired users. Your core duty is to act as an extension of the user's eyes and brain, providing information that is safe, precise, and optimized for Screen Reader software.
-
-# GLOBAL RULES
-Regardless of the task, you must strictly adhere to the following three principles:
-
-1.  **Language Standards**:
-    *   **Sole Output Language**: Traditional Chinese (Hong Kong style vocabulary / 繁體中文).
-    *   **Translation Requirement**: If source data is in a foreign language, digest and translate it into fluent HK Chinese. **STRICTLY PROHIBITED** to display original foreign text (unless specifically requested).
-
-2.  **Accessibility Format**:
-    *   **Markdown Structure**: Use \`#\` (headings) and \`-\` (lists) to establish a clear hierarchy for screen reader navigation.
-    *   **Symbol Ban**: **STRICTLY PROHIBITED** to output \`[ ]\` (square brackets) or \`{ }\` (curly braces) or any decorative symbols that interfere with reading rhythm. Cite sources directly in the narrative; do not use notations like \`[1]\`.
-
-3.  **Content Style**:
-    *   Text must be concise. Main points must be placed at the very beginning.
-
----
-
-# ★ HIGHEST DIRECTIVE: TEXT ABSOLUTE PRIORITY ★
-**This rule overrides all other task logic:**
-When receiving an image or file, your **FIRST step must be a "Text Scan"**.
-*   **Trigger**: If the image contains **ANY amount of text** (whether a single word, a slogan, or a full page).
-*   **Execution Order**:
-    1.  **IMMEDIATE TEXT OUTPUT**: You MUST list/translate the recognized text at the very **beginning** of your response.
-    2.  **NO FILLER**: **STRICTLY PROHIBITED** to describe the image's appearance, color, composition, or vibe *before* the text is output.
-    3.  **VISUALS LATER**: Only after the text content is fully presented can you use a separator to start describing other visual details.
-
----
-
-# TASK EXECUTION LOGIC
-
-Determine the input type and follow the corresponding flow:
-
-## Task 1: Visual Analysis
-
-### A. If Image Contains ANY Text (Priority 1)
-*   **Scope**: Documents, signs, book pages, screenshots with text, packaging.
-*   **Workflow**:
-    1.  **[Step 1] Full Recognition & Translation**: Use high-level vision to identify all visible text.
-        *   If clear: **Directly output** the translated Traditional Chinese content.
-        *   If blurry/blocked: Explicitly report "About how much text is illegible".
-    2.  **[Step 2] Visual Supplement**: After text output is complete, use a new paragraph to describe layout or background visuals.
-
-### B. If Image is "Flora/Fauna"
-1.  **Text Check**: (Per Highest Directive: if a label/sign is present, read it FIRST).
-2.  **Identification**: Identify species based on visual features.
-3.  **Background Check**: Search web for scientific name, common name, habits, distribution.
-4.  **Output**: Write a detailed article including species name and characteristics.
-
-### C. If Image is "Product Packaging (Box/Can/Bottle)"
-1.  **Info Extraction (Text First)**: **Read out** all text on the package FIRST (Brand, Model, Ingredients, Warnings).
-2.  **Deep Research**: Use this info to search for usage, detailed user reviews, pros/cons.
-3.  **Output**: Combine "Package Text" + "Web Info" into a complete buying guide.
-
-### D. If Image is "Screenshot" (UI/UX Mode)
-1.  **Focus Report (Text First)**: **Read out** the text content of the currently selected/focused/highlighted item FIRST.
-2.  **Interface Scan**: List text labels of other visible items.
-3.  **Status Filter**:
-    *   Actionable items (Checkbox/Switch): Only report "Positive State" (e.g., Checked, On).
-    *   If item is Unchecked/Off, **read only the item name**, do not report its status.
-
-### E. If Image is "Logo"
-1.  **Identify**: Recognize the brand/org. Use reverse search if needed.
-2.  **Intro**: Provide a background introduction of the entity.
-
-### F. Other Scenes (Environment, Objects, People)
-1.  **Text Check**: (Again, if background has signs/clothing text, **read it FIRST**).
-2.  **Scene Description**: Objective scan. Overall layout -> Important details.
-3.  **People**: Estimate gender, age, expression. Identify name if famous.
-
-### G. Media & Document Files
-1.  **Documents (PDF/DOC)**: Ignore decorative layout. **Directly output** the detailed translated content.
-2.  **AV (Video/Audio)**: Analyze visual and audio content. **Directly output** a detailed translated summary.
-
-## Task 2: Web Search Requests
-When user asks for real-time info:
-1.  **Multi-Language Search**: Search broadly using Traditional Chinese, English, Japanese, and relevant languages (e.g., French/Italian for European products).
-2.  **Integration**: Summarize official specs, authoritative reviews, and real user feedback (pros/cons).
-3.  **Output**: Organize into a structured, well-segmented explanatory article.`;
-
-        const HYBRID_PROMPT = `# SYSTEM ROLE
-You are a specialized "Hybrid OCR & Accessibility Engine" for visually impaired users.
-You will receive two inputs for a single PDF page:
-1. **Raw Text**: Extracted via software (may contain garbled text/mojibake).
-2. **Page Image**: The visual ground truth.
-
-# MISSION
-Reconstruct the page content into perfect **Markdown** format by cross-referencing the Raw Text and the Page Image.
-
-# STRICT EXECUTION RULES
-1. **Zero Omission Policy**:
-   - Transcribe EVERY single character visible in the image.
-   - Do NOT summarize. Do NOT skip headers, footers, or sidebars.
-   - If the "Raw Text" is incomplete, rely on the "Page Image" to fill in the gaps.
-
-2. **Image Description (Accessibility)**:
-   - If the page contains charts, diagrams, or photos, you must insert a description block in the exact location.
-   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
-   - Description must be objective and detailed (colors, positions, text inside image).
-
-3. **Format & Language**:
-   - Use strict Markdown (Headers \`#\`, Lists \`-\`, Tables \`| |\`).
-   - If the content is in a foreign language, translate it to **Traditional Chinese (Hong Kong)** immediately.
-   - If the content is already Chinese, preserve it exactly.
-
-# OUTPUT
-Output ONLY the final Markdown content. No conversational filler (e.g., "Here is the text").`;
-
-        const VISUAL_PROMPT = `# SYSTEM ROLE
-You are a high-precision "Visual OCR Expert" for visually impaired users.
-You will receive a **Page Image**.
-
-# MISSION
-Visually recognize and transcribe all text from the image into **Markdown**, and describe any visual elements.
-
-# STRICT EXECUTION RULES
-1. **Verbatim Transcription**:
-   - Transcribe text exactly as seen. Do NOT summarize or paraphrase.
-   - Pay attention to multi-column layouts; read from top-left to bottom-right logically.
-   - Include page numbers and small print.
-
-2. **Visual Description**:
-   - Detect all non-text elements (photos, icons, charts).
-   - Insert a description block at the corresponding position.
-   - Format: \`> 🖼️ [圖片描述]: <Detailed description in Traditional Chinese (Hong Kong)>\`
-
-3. **Format & Language**:
-   - Output must be in **Traditional Chinese (Hong Kong)**.
-   - If the original text is English/Other, translate it fluently while preserving the original structure.
-   - Use Markdown tables for any grid data found in the image.
-
-# OUTPUT
-Output ONLY the final Markdown content. Do not output code blocks (\`\`\`markdown) wrapper, just the raw content.`;
-        
-        const DEFAULT_OCR_PROMPT = `# Role: Multilingual High-Fidelity OCR & Accessibility Engine
-
-# Objective
-You are an advanced Optical Character Recognition (OCR) system designed for visually impaired users and knowledge management in Obsidian. Your task is to transcribe ALL text and visual elements from the provided image(s) into a clean, screen-reader-friendly Markdown format with 100% pixel-perfect accuracy.
-
-# Strict Output Rules (Read Carefully):
-1. **Verbatim Transcription:** Write exactly what is written in the image. Do not correct typos, do not summarize, do not shorten, and do not omit a single character.
-2. **Zero Conversational Filler:** Do NOT output phrases like "Here is the transcription," "Sure," or "I can help with that." Output ONLY the content derived from the image.
-3. **Full Completeness:** Regardless of the text length, you must transcribe everything. Never use "..." or "[rest of text omitted]".
-4. **Layout Preservation:**
-   - Use Markdown headers (#, ##) to represent text size/hierarchy.
-   - Use Markdown lists (- or 1.) for bullet points.
-   - **Tables:** You MUST convert any grid or table structure into a valid Markdown Table. Do not flatten tables into text.
-   
-# Intelligent Image Description Logic (Crucial):
-When you encounter a photo, icon, diagram, or illustration embedded within the text:
-1. **Analyze the Context:** Determine the **dominant language** of the text immediately surrounding the image.
-2. **Generate Description:** Write a concise, objective description of the visual element **in that specific dominant language**.
-3. **Format:** Insert the description in brackets: \`[Image: <Description in the dominant language>]\`.
-   - *Example (Chinese Text):* \`...詳見下圖： [圖片：顯示2024年銷售增長的柱狀圖] 繼續閱讀...\`
-   - *Example (English Text):* \`...see figure below: [Image: A bar chart showing sales growth in 2024] Continue reading...\`
-
-# Response Format
-- Start immediately with the transcribed content.
-- Ensure the Markdown syntax is perfect for Obsidian (standard markdown).
-
-# Execution
-Proceed now with the image provided.`;
-        
-        // [MODIFIED] 最佳化翻譯指令 (The Strict Archival Translator)
-        const DEFAULT_TRANSLATE_PROMPT = `# Role Definition
-You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in converting content into Traditional Chinese (Hong Kong).
-
-# The 3 Laws of Translation (MUST FOLLOW)
-1. **Zero Omission Policy (絕無遺漏)**:
-   - You must translate EVERY single sentence, phrase, list item, and caption.
-   - **STRICTLY PROHIBITED**: Do not use phrases like "Same as above", "...", "[Rest omitted]", or "Summary of the following".
-   - Even if the original text repeats itself 100 times, you must translate it 100 times.
-
-2. **No Summarization (絕不摘要)**:
-   - Your job is to convert language, not to compress information.
-   - Do not attempt to "improve" the text by making it concise. If the original is verbose, the translation must be verbose.
-
-3. **Output Continuity**:
-   - Translate faithfully without interruption.
-
-# Format & Language Standards
-- **Target Language**: Traditional Chinese (Hong Kong style / 繁體中文-香港).
-- **Formatting**: Preserve all original Markdown (headings #, bold **, lists -) exactly.
-- **Context Awareness**: Use the provided [Previous Translation] ONLY for maintaining consistency in terminology and names. Do NOT re-translate it.
-- **Handling Foreign Text**: If input is NOT Traditional Chinese, translate it. If it IS Traditional Chinese, output as is.
-
-# Workflow
-1. Read the [Current Text].
-2. Reference [Previous Translation] for context.
-3. Output the translation of [Current Text] ONLY.`;
-        
+        const DEFAULT_CHAT_PROMPT = `# PERSONA\nYou are a top-tier AI Visual and Information Assistant dedicated to serving visually impaired users. Your core duty is to act as an extension of the user's eyes and brain, providing information that is safe, precise, and optimized for Screen Reader software.\n\n# GLOBAL RULES\nRegardless of the task, you must strictly adhere to the following three principles:\n\n1.  **Language Standards**:\n    *   **Sole Output Language**: Traditional Chinese (Hong Kong style vocabulary / 繁體中文).\n    *   **Translation Requirement**: If source data is in a foreign language, digest and translate it into fluent HK Chinese. **STRICTLY PROHIBITED** to display original foreign text (unless specifically requested).\n\n2.  **Accessibility Format**:\n    *   **Markdown Structure**: Use \`#\` (headings) and \`-\` (lists) to establish a clear hierarchy for screen reader navigation.\n    *   **Symbol Ban**: **STRICTLY PROHIBITED** to output \`[ ]\` (square brackets) or \`{ }\` (curly braces) or any decorative symbols that interfere with reading rhythm. Cite sources directly in the narrative; do not use notations like \`[1]\`.\n\n3.  **Content Style**:\n    *   Text must be concise. Main points must be placed at the very beginning.`;
+        const DEFAULT_OCR_PROMPT = `# Role: Multilingual High-Fidelity OCR & Accessibility Engine\n\n# Objective\nYou are an advanced Optical Character Recognition (OCR) system designed for visually impaired users and knowledge management in Obsidian. Your task is to transcribe ALL text and visual elements from the provided image(s) into a clean, screen-reader-friendly Markdown format with 100% pixel-perfect accuracy.\n\n# Strict Output Rules (Read Carefully):\n1. **Verbatim Transcription:** Write exactly what is written in the image. Do not correct typos, do not summarize, do not shorten, and do not omit a single character.\n2. **Zero Conversational Filler:** Do NOT output phrases like "Here is the transcription," "Sure," or "I can help with that." Output ONLY the content derived from the image.\n3. **Full Completeness:** Regardless of the text length, you must transcribe everything. Never use "..." or "[rest of text omitted]".\n4. **Layout Preservation:**\n   - Use Markdown headers (#, ##) to represent text size/hierarchy.\n   - Use Markdown lists (- or 1.) for bullet points.\n   - **Tables:** You MUST convert any grid or table structure into a valid Markdown Table. Do not flatten tables into text.\n   \n# Intelligent Image Description Logic (Crucial):\nWhen you encounter a photo, icon, diagram, or illustration embedded within the text:\n1. **Analyze the Context:** Determine the **dominant language** of the text immediately surrounding the image.\n2. **Generate Description:** Write a concise, objective description of the visual element **in that specific dominant language**.\n3. **Format:** Insert the description in brackets: \`[Image: <Description in the dominant language>]\`.\n\n# Response Format\n- Start immediately with the transcribed content.\n- Ensure the Markdown syntax is perfect for Obsidian (standard markdown).\n\n# Execution\nProceed now with the image provided.`;
+        const DEFAULT_TRANSLATE_PROMPT = `# Role Definition\nYou are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in converting content into Traditional Chinese (Hong Kong).\n\n# The 3 Laws of Translation (MUST FOLLOW)\n1. **Zero Omission Policy (絕無遺漏)**:\n   - You must translate EVERY single sentence, phrase, list item, and caption.\n   - **STRICTLY PROHIBITED**: Do not use phrases like "Same as above", "...", "[Rest omitted]", or "Summary of the following".\n   - Even if the original text repeats itself 100 times, you must translate it 100 times.\n\n2. **No Summarization (絕不摘要)**:\n   - Your job is to convert language, not to compress information.\n   - Do not attempt to "improve" the text by making it concise. If the original is verbose, the translation must be verbose.\n\n3. **Output Continuity**:\n   - Translate faithfully without interruption.\n\n# Format & Language Standards\n- **Target Language**: Traditional Chinese (Hong Kong style / 繁體中文-香港).\n- **Formatting**: Preserve all original Markdown (headings #, bold **, lists -) exactly.\n- **Context Awareness**: Use the provided [Previous Translation] ONLY for maintaining consistency in terminology and names. Do NOT re-translate it.\n- **Handling Foreign Text**: If input is NOT Traditional Chinese, translate it. If it IS Traditional Chinese, output as is.\n\n# Workflow\n1. Read the [Current Text].\n2. Reference [Previous Translation] for context.\n3. Output the translation of [Current Text] ONLY.`;
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v9_chunked";
 
         const PROVIDERS = {
@@ -1523,48 +1154,30 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             if (audioContext.state === 'suspended') audioContext.resume().catch(e => console.error(e));
         }
 
-        ['click', 'touchstart', 'keydown'].forEach(evt => {
-            document.addEventListener(evt, ensureAudioContext, { once: false, passive: true });
-        });
-        
+        ['click', 'touchstart', 'keydown'].forEach(evt => { document.addEventListener(evt, ensureAudioContext, { once: false, passive: true }); });
         document.addEventListener('keydown', handleGlobalShortcuts);
 
         function handleGlobalShortcuts(e) {
             if (!e.altKey || !e.shiftKey) return;
             const key = e.key.toLowerCase();
-            
             if (key === 'o') { e.preventDefault(); switchTab('tools'); document.getElementById('reader-input').click(); return; }
             if (key === 'e') { e.preventDefault(); exportManager.openMenu(); return; } 
-
             const actions = {
-                's': () => switchTab('settings'),
-                'u': { id: 'upload-btn' },
-                'n': { id: 'new-chat-btn' },
-                'k': { id: 'submit-btn' },
-                'i': { id: 'user-input', type: 'focus' },
-                '1': () => switchTab('chat'),
-                '2': () => switchTab('tools'),
-                '3': () => switchTab('settings')
+                's': () => switchTab('settings'), 'u': { id: 'upload-btn' }, 'n': { id: 'new-chat-btn' },
+                'k': { id: 'submit-btn' }, 'i': { id: 'user-input', type: 'focus' },
+                '1': () => switchTab('chat'), '2': () => switchTab('tools'), '3': () => switchTab('settings')
             };
             if (actions[key]) {
                 e.preventDefault(); ensureAudioContext();
                 if (typeof actions[key] === 'function') actions[key]();
-                else {
-                    const target = document.getElementById(actions[key].id);
-                    if (target) { if (actions[key].type === 'focus') target.focus(); else target.click(); }
-                }
+                else { const target = document.getElementById(actions[key].id); if (target) { if (actions[key].type === 'focus') target.focus(); else target.click(); } }
             }
         }
 
-        // --- 新增：輸入框自動長高 ---
         function initAutoGrow() {
             const tx = document.getElementById('user-input');
-            const onInput = function() {
-                this.style.height = 'auto';
-                this.style.height = (this.scrollHeight) + 'px';
-            };
+            const onInput = function() { this.style.height = 'auto'; this.style.height = (this.scrollHeight) + 'px'; };
             tx.addEventListener("input", onInput, false);
-            // 初始化時也執行一次
             tx.setAttribute('style', 'height:' + (tx.scrollHeight) + 'px;overflow-y:hidden;');
             onInput.call(tx);
         }
@@ -1578,33 +1191,23 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 const savedProvider = localStorage.getItem('provider');
                 const savedTimeout = localStorage.getItem('timeout_setting');
                 if (savedTimeout) document.getElementById('timeout-setting').value = savedTimeout;
-                
                 const orSearch = document.getElementById('openrouter-web-search');
                 if(orSearch) orSearch.checked = (localStorage.getItem('openrouter_web_search') === 'true');
-                
                 const savedEnter = localStorage.getItem('enter_to_send');
                 document.getElementById('enter-to-send').checked = (savedEnter === null || savedEnter === 'true');
-
                 const savedSpecifics = localStorage.getItem('specific_configs');
                 if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
 
                 memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
                 memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
 
-                if (savedProvider && PROVIDERS[savedProvider]) {
-                    document.getElementById('provider-select').value = savedProvider;
-                } else {
-                    document.getElementById('provider-select').value = 'gemini'; 
-                }
+                if (savedProvider && PROVIDERS[savedProvider]) { document.getElementById('provider-select').value = savedProvider; } 
+                else { document.getElementById('provider-select').value = 'gemini'; }
                 
-                // 載入 Datalab Key
                 document.getElementById('datalab-key').value = localStorage.getItem('datalab_key') || "";
                 
                 handleProviderChange(false); 
-                initPasteImage();
-                initDragAndDrop();
-                initEnterKey();
-                initAutoGrow(); // 啟用自動長高
+                initPasteImage(); initDragAndDrop(); initEnterKey(); initAutoGrow();
                 
                 const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
                 toggleChandraBtn(chandraMode && chandraMode.value === 'chandra');
@@ -1613,15 +1216,10 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 if(pauseToggle) pauseToggle.checked = false;
 
                 const hasKey = document.getElementById('api-key').value.trim().length > 0;
-                if (!hasKey) {
-                    switchTab('settings');
-                    showTransientStatus('請先設定 API Key', 'error');
-                } else {
-                    switchTab('chat');
-                }
+                if (!hasKey) { switchTab('settings'); showTransientStatus('請先設定 API Key', 'error'); } 
+                else { switchTab('chat'); }
                 
                 updateConfigStatusDisplay();
-
             } catch (e) { window.reportError("Init Error", e); }
         });
 
@@ -1636,25 +1234,15 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             document.getElementById('tab-chat').classList.toggle('active', mode === 'chat'); 
         }
 
-        // --- 新增：設為一般對話模型 (同時也儲存設定) ---
         function setChatModel() {
-            // 1. 取得 UI 上選擇的 Provider 和 Model
             const uiProvider = document.getElementById('provider-select').value;
             const uiModel = currentActiveModelId; 
-            
-            // 2. 更新全域變數 (真正的對話模型)
             activeChatProvider = uiProvider;
             activeChatModel = uiModel;
-
-            // 3. 寫入 localStorage (正式儲存)
             localStorage.setItem('provider', activeChatProvider);
             localStorage.setItem(`${activeChatProvider}_model`, activeChatModel);
-            
-            // 4. 同時確保該 Provider 的 Key 也被儲存 (若用戶有輸入)
             const currentKey = document.getElementById('api-key').value;
             if (currentKey) localStorage.setItem(`${activeChatProvider}_key`, currentKey.trim());
-
-            // 5. 更新介面
             updateConfigStatusDisplay();
             showTransientStatus(`已確認一般對話模型: ${activeChatProvider} / ${activeChatModel}`);
             playAudioCue('success');
@@ -1681,18 +1269,12 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         }
 
         function updateConfigStatusDisplay() {
-            // 更新儀表板
             const chatEl = document.getElementById('dash-chat');
-            // 注意：這裡顯示的是 activeChatProvider (生效中的設定)，而非 UI 上正在瀏覽的
             if (chatEl) chatEl.innerText = `${activeChatProvider} / ${activeChatModel}`;
-
             const ocrEl = document.getElementById('dash-ocr');
-            if (ocrEl) ocrEl.innerText = specificConfigs.ocr ? 
-                `${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}` : "跟隨主要設定";
-
+            if (ocrEl) ocrEl.innerText = specificConfigs.ocr ? `${specificConfigs.ocr.provider} / ${specificConfigs.ocr.model}` : "跟隨主要設定";
             const transEl = document.getElementById('dash-trans');
-            if (transEl) transEl.innerText = specificConfigs.translate ? 
-                `${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "跟隨主要設定";
+            if (transEl) transEl.innerText = specificConfigs.translate ? `${specificConfigs.translate.provider} / ${specificConfigs.translate.model}` : "跟隨主要設定";
         }
 
         function playAudioCue(type) {
@@ -1719,7 +1301,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             stickyMemory = { type: null, content: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
             document.getElementById('user-input').value = "";
-            document.getElementById('user-input').style.height = 'auto'; // 重置高度
+            document.getElementById('user-input').style.height = 'auto';
             selectedFile = null;
             document.getElementById('upload-btn').innerText = "📁 檔案/拍照";
             document.getElementById('upload-btn').classList.remove('active');
@@ -1745,7 +1327,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             if (input.files.length > 0) {
                 processReaderTool(input.files[0]);
             }
-            input.value = "";
         }
 
         async function processReaderTool(file) {
@@ -1759,9 +1340,10 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             const currentSignal = activeReaderController.signal;
 
             const outputArea = document.getElementById('reader-output-area');
-            outputArea.innerHTML = ""; 
+            outputArea.innerHTML = `<h1 class="msg-heading" id="reader-result-title">辨識結果 (Recognition Result)</h1>`; // 初始化標題
+            
             document.getElementById('reader-result-wrapper').classList.remove('hidden');
-            outputArea.focus(); 
+            document.getElementById('reader-result-title').focus(); // 聚焦標題，告知用戶開始
             playAudioCue('start');
 
             const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
@@ -1782,13 +1364,19 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     
                     if (currentSignal.aborted) return; 
 
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
+                    // Chandra 是一次性返回，直接渲染並朗讀
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'reader-page-block';
+                    resultDiv.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
+                    outputArea.appendChild(resultDiv);
+                    
                     playAudioCue('success');
                     updateStatusBar("處理完成");
                     
                     if (document.getElementById('reader-translate').checked) {
                          await executeFullTranslation(currentSignal);
                     } else {
+                        // 強制朗讀：聚焦總容器或標題
                         outputArea.focus();
                     }
 
@@ -1815,10 +1403,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
                     updateVisualProgress(true, `準備處理 ${pdf.numPages} 頁...`);
                     
-                    // 修改：若無指定 OCR 專用模型，則使用 activeChatProvider (而不是 UI 上選擇的)
                     let ocrProvider = specificConfigs.ocr ? specificConfigs.ocr.provider : activeChatProvider;
                     let ocrModel = specificConfigs.ocr ? specificConfigs.ocr.model : activeChatModel;
-                    // Key 也是依照該 Provider 提取
                     let ocrApiKey = (ocrProvider === document.getElementById('provider-select').value) ? document.getElementById('api-key').value : localStorage.getItem(`${ocrProvider}_key`);
 
                     for (let i = 1; i <= pdf.numPages; i++) {
@@ -1864,12 +1450,17 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                                 const pageBlock = document.createElement('div');
                                 pageBlock.className = 'reader-page-block';
                                 const pageId = `reader-page-${i}`;
-                                pageBlock.innerHTML = `<h3 id="${pageId}" tabindex="-1">Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(pageRes)));
+                                // 每個區塊內部的小標題保留 Markdown 格式，但不設為 tabindex=0，以免干擾連續朗讀
+                                pageBlock.innerHTML = `<h3>Page ${i}</h3>` + DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(pageRes)));
                                 outputArea.appendChild(pageBlock);
 
+                                // 關鍵邏輯：第一頁立即朗讀
                                 if (i === 1) {
-                                    document.getElementById(pageId).focus();
+                                    // 為了讓螢幕閱讀器讀出「這頁的內容」，我們對該區塊聚焦
+                                    pageBlock.setAttribute('tabindex', '-1');
+                                    pageBlock.focus();
                                 }
+                                // 第 2 頁及之後，不聚焦，靜默加入 DOM
 
                             } catch (e) {
                                 if (e.message !== '已取消') outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message}</p></div>`;
@@ -1888,6 +1479,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                         if (document.getElementById('reader-translate').checked) {
                              await executeFullTranslation(currentSignal);
                         } else {
+                            // 關鍵邏輯：所有工作完成，強制朗讀全文
+                            // 這裡聚焦最外層的 outputArea，螢幕閱讀器通常會從頭開始朗讀
                             outputArea.focus();
                         }
 
@@ -1910,7 +1503,11 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     
                     if (currentSignal.aborted) return;
 
-                    outputArea.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
+                    const block = document.createElement('div');
+                    block.className = 'reader-page-block';
+                    block.innerHTML = DOMPurify.sanitize(marked.parse(UniversalTextNormalizer.normalize(res)));
+                    outputArea.appendChild(block);
+                    
                     playAudioCue('success');
                     updateStatusBar("完成");
                     
@@ -1928,7 +1525,11 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
         async function executeFullTranslation(signal) {
              const outputArea = document.getElementById('reader-output-area');
-             const rawText = outputArea.innerText;
+             // 移除 H1 標題進行純文字提取
+             const clone = outputArea.cloneNode(true);
+             const h1 = clone.querySelector('h1.msg-heading');
+             if(h1) h1.remove();
+             const rawText = clone.innerText;
              
              if (!rawText || rawText.trim().length === 0) return;
 
@@ -1937,10 +1538,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
              updateStatusBar(`準備翻譯 ${chunks.length} 個區塊...`, "busy");
              playAudioCue('start');
 
-             outputArea.innerHTML = ""; 
-             const header = document.createElement('h2');
-             header.innerText = "翻譯結果 (Translation Result)";
-             outputArea.appendChild(header);
+             outputArea.innerHTML = `<h1 class="msg-heading">翻譯結果 (Translation Result)</h1>`;
+             outputArea.focus();
 
              let previousTranslation = "";
              const transProvider = specificConfigs.translate ? specificConfigs.translate.provider : activeChatProvider;
@@ -1974,6 +1573,12 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     previousTranslation = chunkRes;
                     await sleep(500);
 
+                    // 翻譯也是逐塊進行，第一塊可以先讀
+                    if (i === 0) {
+                        div.setAttribute('tabindex', '-1');
+                        div.focus();
+                    }
+
                 } catch (e) {
                     if (e.message !== '已取消') {
                         const errDiv = document.createElement('div');
@@ -1987,6 +1592,7 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
 
              updateStatusBar("全量翻譯完成");
              playAudioCue('success');
+             // 全文完成，再次聚焦總容器觸發全讀
              outputArea.focus();
         }
 
@@ -2096,12 +1702,11 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 addMessage('user', txt || (selectedFile ? `[檔案: ${selectedFile.name}]` : "[追問模式]"));
                 
                 document.getElementById('user-input').value = ""; 
-                document.getElementById('user-input').style.height = 'auto'; // 輸入後重置高度
+                document.getElementById('user-input').style.height = 'auto';
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
                 
-                // 修改：發送請求時，使用 activeChatProvider/activeChatModel，而非 UI 上的選擇
                 const res = await callAI(
                     activeChatProvider, 
                     document.getElementById('system-prompt').value,
@@ -2110,15 +1715,11 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                     fileData, 
                     mime, 
                     ctl.signal,
-                    activeChatModel // 這裡明確傳入一般對話模型
+                    activeChatModel
                 );
 
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
-                
-                // 新增：延遲聚焦以觸發螢幕閱讀器完整朗讀
-                setTimeout(() => { 
-                    aiMsg.focus(); 
-                }, 100);
+                setTimeout(() => { aiMsg.focus(); }, 100);
 
                 chatHistory.push({role: 'user', content: input}); 
                 chatHistory.push({role: 'assistant', content: res});
@@ -2129,15 +1730,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         }
 
         async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
-            // 修改：Key 的獲取邏輯
-            // 如果請求的 provider p 等於目前 UI 上顯示的 provider，則直接取輸入框的值 (方便測試新Key)
-            // 否則，從 localStorage 讀取該 provider 儲存的 Key
             const k = ovKey || (p === document.getElementById('provider-select').value ? document.getElementById('api-key').value : localStorage.getItem(`${p}_key`));
             
-            // 修改：Model 的獲取邏輯
-            // 如果有傳入 ovModel (如 Reader/Translate 指定)，則使用之
-            // 如果沒有，檢查 p 是否為 activeChatProvider，是則使用 activeChatModel
-            // 否則 (如手動切換 UI 瀏覽)，使用該 Provider 儲存的偏好模型，或預設值
             let m = ovModel;
             if (!m) {
                 if (p === activeChatProvider) m = activeChatModel;
@@ -2163,22 +1757,17 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 
                 const chandraMode = localStorage.getItem('chandra_mode');
                 if (chandraMode) formData.append('mode', chandraMode);
-                
                 const forceOCR = localStorage.getItem('chandra_force_ocr');
                 if (forceOCR === 'true') formData.append('force_ocr', 'true');
-                
                 const useLLM = localStorage.getItem('chandra_use_llm');
                 if (useLLM === 'true') formData.append('use_llm', 'true');
-                
                 const paginate = localStorage.getItem('chandra_paginate');
                 if (paginate === 'true') formData.append('paginate', 'true');
                 
                 const langMode = localStorage.getItem('chandra_lang_mode');
                 if (langMode === 'custom') {
                     const savedLangs = JSON.parse(localStorage.getItem('chandra_selected_langs') || '[]');
-                    if (savedLangs.length > 0) {
-                        formData.append('langs', savedLangs.join(','));
-                    }
+                    if (savedLangs.length > 0) formData.append('langs', savedLangs.join(','));
                 }
 
                 const postReq = await fetch(USER_WORKER_URL, {
@@ -2296,18 +1885,12 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
         function showReadyStatus() { updateStatusBar("準備就緒"); }
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
-        // 修改：實現 H1 獨佔與結構降級
         function addMessage(role, content) {
             const div = document.createElement('div'); div.className = `message ${role}`; 
-            div.tabIndex = -1; // 確保可被程式聚焦
-            
+            div.tabIndex = -1; 
             let headerHTML = "";
-            if (role === 'assistant') {
-                headerHTML = `<h1 class="msg-heading">AI 回應：</h1>`;
-            } else {
-                headerHTML = `<div class="msg-heading-user">您：</div>`;
-            }
-
+            if (role === 'assistant') { headerHTML = `<h1 class="msg-heading">AI 回應：</h1>`; } 
+            else { headerHTML = `<div class="msg-heading-user">您：</div>`; }
             div.innerHTML = `${headerHTML}<div class="markdown-body" dir="auto">${role==='user'?content:DOMPurify.sanitize(marked.parse(content))}</div>`;
             document.getElementById('chat-output').appendChild(div); 
             return div;
@@ -2326,8 +1909,6 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             handleModelFilter();
             currentActiveModelId = localStorage.getItem(`${p}_model`) || c.defaultModel;
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
-            // 這裡不再自動儲存 'provider' 到 localStorage，防止覆蓋全域 activeChatProvider
-            
             updateConfigStatusDisplay();
             showReadyStatus();
         }
@@ -2339,25 +1920,15 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             let filtered = allCurrentModels.filter(m => {
                 const isObj = typeof m === 'object';
                 const nameStr = isObj ? (m.name + m.id) : m;
-                
                 const textMatch = nameStr.toLowerCase().includes(f);
-                
                 let privacyMatch = true;
-                if (privacyOnly && isObj && 'priceIn' in m) {
-                    if (m.priceIn === 0 && m.priceOut === 0) privacyMatch = false;
-                }
-                
+                if (privacyOnly && isObj && 'priceIn' in m) { if (m.priceIn === 0 && m.priceOut === 0) privacyMatch = false; }
                 return textMatch && privacyMatch;
             });
 
             if (filtered.length > 0 && typeof filtered[0] === 'object' && 'priceIn' in filtered[0]) {
-                 filtered.sort((a, b) => {
-                    const diff = a.priceIn - b.priceIn;
-                    return diff === 0 ? a.name.localeCompare(b.name) : diff;
-                });
-            } else {
-                 filtered.sort();
-            }
+                 filtered.sort((a, b) => { const diff = a.priceIn - b.priceIn; return diff === 0 ? a.name.localeCompare(b.name) : diff; });
+            } else { filtered.sort(); }
             
             updateModelSelect(filtered, currentActiveModelId);
         }
@@ -2370,29 +1941,18 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 if (typeof m === 'object') {
                     o.value = m.id;
                     const ctx = m.context >= 1000000 ? Math.round(m.context/1000000)+'M' : Math.round(m.context/1000)+'k';
-                    const pIn = m.priceIn.toFixed(3); 
-                    const pOut = m.priceOut.toFixed(3);
+                    const pIn = m.priceIn.toFixed(3); const pOut = m.priceOut.toFixed(3);
                     o.innerText = `[${ctx}] ${m.name} ($${pIn}/$${pOut})`;
-                    
-                    o.dataset.name = m.name;
-                    o.dataset.ctx = ctx;
-                    o.dataset.pin = pIn;
-                    o.dataset.pout = pOut;
-                    o.dataset.desc = m.description || "無描述";
-                    
+                    o.dataset.name = m.name; o.dataset.ctx = ctx; o.dataset.pin = pIn; o.dataset.pout = pOut; o.dataset.desc = m.description || "無描述";
                     if(m.id === active) found = true;
                 } else {
-                    o.value = m;
-                    o.innerText = m;
-                    if(m === active) found = true;
+                    o.value = m; o.innerText = m; if(m === active) found = true;
                 }
-                if (o.value === active) o.selected = true;
-                s.appendChild(o);
+                if (o.value === active) o.selected = true; s.appendChild(o);
             });
             s.appendChild(new Option("自行輸入...", "CUSTOM"));
             const w = document.getElementById('custom-model-wrapper');
             if(found) { s.value=active; w.classList.add('hidden'); } else { s.value="CUSTOM"; w.classList.remove('hidden'); document.getElementById('custom-model-input').value=active; }
-            
             handleModelSelectChange();
         }
         
@@ -2405,12 +1965,8 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 if(p==='openrouter') {
                     const raw = await(await fetch("https://openrouter.ai/api/v1/models")).json();
                     list = raw.data.map(m => ({
-                        id: m.id,
-                        name: m.name,
-                        priceIn: parseFloat(m.pricing.prompt) * 1000000,
-                        priceOut: parseFloat(m.pricing.completion) * 1000000,
-                        context: m.context_length,
-                        description: m.description
+                        id: m.id, name: m.name, priceIn: parseFloat(m.pricing.prompt) * 1000000,
+                        priceOut: parseFloat(m.pricing.completion) * 1000000, context: m.context_length, description: m.description
                     })).sort((a,b) => a.priceIn - b.priceIn);
                 }
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
@@ -2418,65 +1974,30 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
-                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); 
-                    allCurrentModels=list; 
-                    handleModelFilter(); 
-                    showTransientStatus(`獲取成功，找到 ${list.length} 個模型並已儲存`); 
-                } else {
-                    throw new Error("找不到可用模型");
-                }
-            } catch(e) { window.reportError("更新失敗", e); } 
-            finally { btn.innerText="更新"; btn.disabled=false; }
+                    localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); allCurrentModels=list; 
+                    handleModelFilter(); showTransientStatus(`獲取成功，找到 ${list.length} 個模型並已儲存`); 
+                } else { throw new Error("找不到可用模型"); }
+            } catch(e) { window.reportError("更新失敗", e); } finally { btn.innerText="更新"; btn.disabled=false; }
         }
 
         function handleModelSelectChange() {
             const s = document.getElementById('model-select');
             const card = document.getElementById('model-info-card');
-            
             if(s.value==="CUSTOM") {
-                document.getElementById('custom-model-wrapper').classList.remove('hidden');
-                card.classList.add('hidden');
+                document.getElementById('custom-model-wrapper').classList.remove('hidden'); card.classList.add('hidden');
             } else { 
-                document.getElementById('custom-model-wrapper').classList.add('hidden'); 
-                currentActiveModelId=s.value; 
-                
+                document.getElementById('custom-model-wrapper').classList.add('hidden'); currentActiveModelId=s.value; 
                 const opt = s.options[s.selectedIndex];
                 if(opt && opt.dataset.name) {
                     card.classList.remove('hidden');
-                    card.innerHTML = `
-                        <div class="info-card-row">
-                            <span class="info-card-label">名稱 (Name)</span>
-                            <span class="info-card-value">${opt.dataset.name}</span>
-                        </div>
-                        <div class="info-card-row">
-                            <span class="info-card-label">Context</span>
-                            <span class="info-card-value">${opt.dataset.ctx}</span>
-                        </div>
-                        <div class="info-card-row">
-                            <span class="info-card-label">Input Price</span>
-                            <span class="info-card-value">$${opt.dataset.pin}</span>
-                        </div>
-                        <div class="info-card-row">
-                            <span class="info-card-label">Output Price</span>
-                            <span class="info-card-value">$${opt.dataset.pout}</span>
-                        </div>
-                        <div class="info-card-desc">
-                            <strong>ℹ️ 描述：</strong>${opt.dataset.desc}
-                        </div>
-                    `;
-                } else {
-                    card.classList.add('hidden');
-                }
+                    card.innerHTML = `<div class="info-card-row"><span class="info-card-label">名稱 (Name)</span><span class="info-card-value">${opt.dataset.name}</span></div><div class="info-card-row"><span class="info-card-label">Context</span><span class="info-card-value">${opt.dataset.ctx}</span></div><div class="info-card-row"><span class="info-card-label">Input Price</span><span class="info-card-value">$${opt.dataset.pin}</span></div><div class="info-card-row"><span class="info-card-label">Output Price</span><span class="info-card-value">$${opt.dataset.pout}</span></div><div class="info-card-desc"><strong>ℹ️ 描述：</strong>${opt.dataset.desc}</div>`;
+                } else { card.classList.add('hidden'); }
             }
             updateConfigStatusDisplay();
         }
         
-        function handleCustomInputChange() { 
-            currentActiveModelId = document.getElementById('custom-model-input').value.trim(); 
-            updateConfigStatusDisplay();
-        }
+        function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); updateConfigStatusDisplay(); }
         
-        // --- 修改：saveSettings 不再覆蓋 activeChatProvider ---
         function saveSettings() {
             const p = document.getElementById('provider-select').value;
             const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
@@ -2484,21 +2005,13 @@ You are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in c
             localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
-            
-            // 儲存 Key 是必要的 (UI 上顯示的 Provider)
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
             localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
-            
-            // 我們可以儲存 "該 Provider 偏好的 Model"，方便下次選到該 Provider 時自動切換回來
             localStorage.setItem(`${p}_model`, m); 
-            // 注意：currentActiveModelId 仍然是 m (UI 狀態)，但 activeChatProvider/Model (對話狀態) 不變
-            
             localStorage.setItem('timeout_setting', document.getElementById('timeout-setting').value);
             localStorage.setItem('enter_to_send', document.getElementById('enter-to-send').checked);
             localStorage.setItem('openrouter_web_search', document.getElementById('openrouter-web-search').checked);
-            
             showTransientStatus("設定已儲存 (不影響一般對話模型)");
-            
             switchTab(lastActiveTabId || 'chat');
         }
 
