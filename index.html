@@ -245,22 +245,17 @@
         }
         .segmented-control label:focus-within { outline: 3px solid #fff; }
 
-        /* Reader 結果區 (效能優化版) */
+        /* Reader 結果區 (修正版：移除 content-visibility 以支援觸摸探索) */
         #reader-output-area {
             background: #111; border: 2px solid #444; border-radius: 8px;
             padding: 15px; min-height: 100px; margin-top: 20px;
-            white-space: pre-wrap; word-break: break-word; outline: none;
-            /* 針對大量文字的效能優化：讓瀏覽器知道這個區域很高，但只有在可見時才渲染 */
-            content-visibility: auto;
-            contain-intrinsic-size: 1000px; 
+            white-space: pre-wrap; word-break: break-word; 
+            outline: none; /* 視覺上隱藏邊框，但保留 focus 狀態 */
         }
         #reader-output-area:focus { outline: 3px solid var(--accent-color); background: #1a1a1a; }
         
         .reader-page-block {
             border-bottom: 1px dashed #555; padding-bottom: 20px; margin-bottom: 20px;
-            /* 頁面區塊也加入效能優化 */
-            content-visibility: auto;
-            contain-intrinsic-size: 500px;
         }
         .translation-chunk {
             border-left: 3px solid var(--accent-color); padding-left: 10px; margin-bottom: 20px;
@@ -604,8 +599,8 @@
                     <button type="button" class="action-btn secondary" style="width:auto; margin:0; padding:8px 15px;" onclick="exportManager.openMenu(null, 'reader')">📤 匯出 / 複製</button>
                 </div>
                 
-                <!-- 結果輸出容器：支援焦點導航，加入 H1 標題作為朗讀起點 -->
-                <div id="reader-output-area" tabindex="-1">
+                <!-- 結果輸出容器：支援焦點導航，加入 H1 標題作為朗讀起點，移除 content-visibility -->
+                <div id="reader-output-area" role="article" aria-label="辨識結果內容" tabindex="-1">
                      <!-- JS 將會在此動態插入 <h1 class="msg-heading">辨識結果 (Recognition Result)</h1> -->
                 </div>
             </div>
