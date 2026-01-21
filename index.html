@@ -1101,6 +1101,28 @@
                 return processed.replace(/([\u2e80-\u9fff])\s+([\u2e80-\u9fff])/g, "$1$2").replace(/([\u2e80-\u9fff])\s+([a-zA-Z0-9])/g, "$1$2").replace(/([a-zA-Z0-9])\s+([\u2e80-\u9fff])/g, "$1$2").replace(/\n{3,}/g, "\n\n").trim();
             }
         }
+        
+        // 新增的文字品質檢測函式
+        function checkTextQuality(text) {
+            if (!text || text.trim().length < 20) return { valid: false, reason: "too_short" };
+            if (text.length > 8000) return { valid: false, reason: "too_long" };
+
+            let badCount = 0;
+            const len = text.length;
+            
+            for (let i = 0; i < len; i++) {
+                const c = text.charCodeAt(i);
+                // Check for Replacement Character (0xFFFD) or Private Use Area (0xE000-0xF8FF)
+                if (c === 0xFFFD || (c >= 0xE000 && c <= 0xF8FF)) {
+                    badCount++;
+                }
+            }
+            
+            // If > 20% bad characters, mark as garbage
+            if ((badCount / len) > 0.2) return { valid: false, reason: "garbage_chars" };
+            
+            return { valid: true };
+        }
 
         window.reportError = function(msg, errObj) {
             const time = new Date().toLocaleTimeString();
@@ -1487,9 +1509,7 @@
                     for (let i = 1; i <= pdf.numPages; i++) {
                         if (currentSignal.aborted) break;
 
-                        updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁...`, "busy");
-                        document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
-
+                        let pageStatusSuffix = "";
                         const page = await pdf.getPage(i);
                         let promptContent = "";
                         let imgBase64 = null;
@@ -1509,15 +1529,26 @@
                             try {
                                 const textContent = await page.getTextContent();
                                 const textLayer = textContent.items.map(item => item.str).join(" ");
-                                if (textLayer.length > 20 && textLayer.length < 8000) {
+                                
+                                const quality = checkTextQuality(textLayer);
+                                
+                                if (quality.valid) {
                                     promptContent = `[Page ${i} Raw Text Start]\n${textLayer}\n[Page ${i} Raw Text End]\n\nProcess with Hybrid rules.`;
+                                    pageStatusSuffix = "，文字層讀取成功";
                                 } else {
-                                    promptContent = `[Page ${i}]\nNo usable text layer. Visual Only.`;
+                                    promptContent = `[Page ${i}]\nText layer is corrupt or invalid (Reason: ${quality.reason}). Visual Mode Only.`;
+                                    pageStatusSuffix = "，文字層讀取失敗 (轉為純視覺)";
                                 }
-                            } catch (e) { promptContent = `Visual Only (Error)`; }
+                            } catch (e) { 
+                                promptContent = `Visual Only (Error)`; 
+                                pageStatusSuffix = "，文字層錯誤";
+                            }
                         } else {
                             promptContent = `[Page ${i}]\nVisual Mode Only.`;
                         }
+                        
+                        updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁${pageStatusSuffix}...`, "busy");
+                        document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
                         if (imgBase64) {
                             try {
