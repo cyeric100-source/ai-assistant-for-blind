@@ -527,10 +527,7 @@
         <!-- A. 對話視圖 (Chat View) -->
         <section id="view-chat" class="view-section active" role="tabpanel" aria-labelledby="tab-chat">
             <div id="chat-container">
-                <div class="message assistant" tabindex="-1">
-                    <h1 class="msg-heading">AI 回應：</h1>
-                    <div class="markdown-body">你好！我是你的 AI 視障助理。已啟用全功能安全代理 (支援大型檔案)。請輸入文字、上傳圖片/PDF 進行對話。</div>
-                </div>
+                <!-- 動態歡迎訊息將由 JS 插入此處 -->
                 <div id="chat-output"></div>
             </div>
 
@@ -562,18 +559,17 @@
             <div class="settings-card" style="border-top: 3px solid var(--accent-color);">
                 <div class="ui-subheader">1. 選擇識別模式</div>
                 <div class="segmented-control" role="group" aria-label="識別模式選擇">
-                    <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra" onchange="toggleChandraBtn(true)">
+                    <input type="radio" name="ocr-mode" id="mode-chandra" value="chandra" onchange="toggleChandraBtn(true); renderReaderWelcome()">
                     <label for="mode-chandra">Chandra<br>(整份)</label>
                     
-                    <input type="radio" name="ocr-mode" id="mode-hybrid" value="hybrid" checked onchange="toggleChandraBtn(false)">
+                    <input type="radio" name="ocr-mode" id="mode-hybrid" value="hybrid" checked onchange="toggleChandraBtn(false); renderReaderWelcome()">
                     <label for="mode-hybrid">混合模式<br>(逐頁)</label>
                     
-                    <input type="radio" name="ocr-mode" id="mode-visual" value="visual" onchange="toggleChandraBtn(false)">
+                    <input type="radio" name="ocr-mode" id="mode-visual" value="visual" onchange="toggleChandraBtn(false); renderReaderWelcome()">
                     <label for="mode-visual">純視覺<br>(逐頁)</label>
                 </div>
-                <p style="font-size:0.85rem; color:#aaa; margin-bottom:15px;">* Chandra 適合快速提取整份文件；混合模式適合精準校對。</p>
-
-                <button type="button" id="btn-open-chandra-settings" class="action-btn secondary hidden" onclick="openChandraSettings()">
+                
+                <button type="button" id="btn-open-chandra-settings" class="action-btn secondary hidden" onclick="openChandraSettings()" style="margin-top:10px;">
                     ⚙️ Chandra 進階設定
                 </button>
 
@@ -587,7 +583,7 @@
                 
                 <div style="margin-top:10px;">
                     <label class="check-btn">
-                        <input type="checkbox" id="reader-translate"> <span>OCR 後翻譯成繁體中文</span>
+                        <input type="checkbox" id="reader-translate" onchange="renderReaderWelcome()"> <span>OCR 後翻譯成繁體中文</span>
                     </label>
                 </div>
             </div>
@@ -601,7 +597,7 @@
                 
                 <!-- 結果輸出容器：支援焦點導航，加入 H1 標題作為朗讀起點，移除 content-visibility -->
                 <div id="reader-output-area" role="article" aria-label="辨識結果內容" tabindex="-1">
-                     <!-- JS 將會在此動態插入 <h1 class="msg-heading">辨識結果 (Recognition Result)</h1> -->
+                     <!-- JS 將會在此動態插入歡迎語句或辨識結果 -->
                 </div>
             </div>
         </section>
@@ -1177,6 +1173,86 @@
             onInput.call(tx);
         }
 
+        function renderWelcomeMessage() {
+            const chatOutput = document.getElementById('chat-output');
+            chatOutput.innerHTML = ""; 
+
+            const provider = activeChatProvider; 
+            const model = activeChatModel; 
+            
+            const enterChecked = document.getElementById('enter-to-send').checked;
+            const enterText = enterChecked 
+                ? "按 <strong>Enter 或換行鍵</strong> 立即發送問題" 
+                : "按 <strong>Enter 或換行鍵</strong> 僅換行 (請使用介面上的『傳送』按鈕發送)";
+            
+            const pauseChecked = document.getElementById('pause-send').checked;
+            const fileText = pauseChecked
+                ? "會<strong>暫停並等待</strong>您輸入文字後才傳送"
+                : "將<strong>自動立即傳送</strong>以進行分析";
+
+            const msgDiv = document.createElement('div');
+            msgDiv.id = 'dynamic-welcome-msg';
+            msgDiv.className = 'message assistant';
+            msgDiv.tabIndex = -1;
+            
+            msgDiv.innerHTML = `
+                <h1 class="msg-heading">AI 回應：</h1>
+                <div class="markdown-body">
+                    <p>你好！我是你的 <strong>${provider}</strong> AI 助理，目前運作模型為 <strong>${model}</strong>。</p>
+                    <ol>
+                        <li>鍵盤設定為：${enterText}。</li>
+                        <li>檔案處理為：上載或拍照後，${fileText}。</li>
+                    </ol>
+                    <p>系統正透過 Cloudflare Workers 安全代理連線，並已準備就緒。</p>
+                </div>
+            `;
+            
+            chatOutput.appendChild(msgDiv);
+        }
+
+        function renderReaderWelcome() {
+            if (document.getElementById('reader-result-title')) return; // 若已有結果，不覆蓋
+
+            const outputArea = document.getElementById('reader-output-area');
+            const mode = document.querySelector('input[name="ocr-mode"]:checked').value;
+            const translate = document.getElementById('reader-translate').checked;
+            
+            const ocrConfig = specificConfigs.ocr || { provider: activeChatProvider, model: activeChatModel };
+            const transConfig = specificConfigs.translate || { provider: activeChatProvider, model: activeChatModel };
+
+            let modeText = "";
+            if (mode === 'chandra') {
+                modeText = "目前選用 <strong>Chandra (整份)</strong> 模式。此模式適合<strong>快速提取</strong>整份文件的內容，並能強力還原表格與複雜排版。";
+            } else if (mode === 'hybrid') {
+                modeText = `目前選用 <strong>混合模式 (逐頁)</strong>，由 <strong>${ocrConfig.provider} (${ocrConfig.model})</strong> 負責辨識。此模式結合 PDF 原文層與視覺識別，適合對文件進行<strong>精準校對</strong>與細節分析。`;
+            } else {
+                 modeText = `目前選用 <strong>純視覺 (逐頁)</strong>，由 <strong>${ocrConfig.provider} (${ocrConfig.model})</strong> 負責辨識。此模式完全依賴 AI 視覺分析，適合處理<strong>沒有文字層</strong>的掃描檔、圖片或手寫內容。`;
+            }
+
+            let transText = "";
+            if (translate) {
+                transText = `輸出設定為：辨識後使用 <strong>${transConfig.provider} (${transConfig.model})</strong> 自動<strong>翻譯</strong>為繁體中文。`;
+            } else {
+                transText = "輸出設定為：直接顯示<strong>原文</strong> (不進行翻譯)。";
+            }
+
+            const html = `
+                <div id="reader-welcome-msg">
+                    <h1 class="msg-heading">文字讀取準備就緒</h1>
+                    <div class="markdown-body">
+                        <ol>
+                            <li>${modeText}</li>
+                            <li>${transText}</li>
+                        </ol>
+                        <p>請按下『拍照 / 選擇文件』按鈕開始。</p>
+                    </div>
+                </div>
+            `;
+
+            outputArea.innerHTML = html;
+            document.getElementById('reader-result-wrapper').classList.remove('hidden');
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
@@ -1215,6 +1291,8 @@
                 else { switchTab('chat'); }
                 
                 updateConfigStatusDisplay();
+                renderWelcomeMessage();
+                renderReaderWelcome(); // 初始化文字讀取歡迎語
             } catch (e) { window.reportError("Init Error", e); }
         });
 
@@ -1241,6 +1319,7 @@
             updateConfigStatusDisplay();
             showTransientStatus(`已確認一般對話模型: ${activeChatProvider} / ${activeChatModel}`);
             playAudioCue('success');
+            renderReaderWelcome(); // 更新讀取頁面模型資訊
         }
 
         function setSpecificConfig(type) {
@@ -1253,6 +1332,7 @@
             updateConfigStatusDisplay();
             showTransientStatus(`已設定 ${type} 專用模型`);
             playAudioCue('success');
+            renderReaderWelcome(); // 更新讀取頁面模型資訊
         }
 
         function clearSpecificConfigs() {
@@ -1261,6 +1341,7 @@
             updateConfigStatusDisplay();
             showTransientStatus("已重置分工設定");
             playAudioCue('success');
+            renderReaderWelcome(); // 更新讀取頁面模型資訊
         }
 
         function updateConfigStatusDisplay() {
@@ -1295,6 +1376,7 @@
             chatHistory = []; 
             stickyMemory = { type: null, content: null, mime: null, count: 0 };
             document.getElementById('chat-output').innerHTML = ""; 
+            renderWelcomeMessage();
             document.getElementById('user-input').value = "";
             document.getElementById('user-input').style.height = 'auto';
             selectedFile = null;
@@ -1881,6 +1963,9 @@
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
         function addMessage(role, content) {
+            const welcome = document.getElementById('dynamic-welcome-msg');
+            if(welcome) welcome.remove();
+
             const div = document.createElement('div'); div.className = `message ${role}`; 
             div.tabIndex = -1; 
             let headerHTML = "";
@@ -1906,6 +1991,7 @@
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
             updateConfigStatusDisplay();
             showReadyStatus();
+            renderReaderWelcome(); // 更新讀取頁面模型資訊
         }
         
         function handleModelFilter() {
