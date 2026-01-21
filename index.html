@@ -1509,7 +1509,6 @@
                     for (let i = 1; i <= pdf.numPages; i++) {
                         if (currentSignal.aborted) break;
 
-                        let pageStatusSuffix = "";
                         const page = await pdf.getPage(i);
                         let promptContent = "";
                         let imgBase64 = null;
@@ -1525,6 +1524,9 @@
                             imgBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
                         }
                         
+                        // Default status display for visual mode
+                        let statusText = `正在處理第 ${i} / ${pdf.numPages} 頁...`;
+
                         if (mode === 'hybrid') {
                             try {
                                 const textContent = await page.getTextContent();
@@ -1534,20 +1536,20 @@
                                 
                                 if (quality.valid) {
                                     promptContent = `[Page ${i} Raw Text Start]\n${textLayer}\n[Page ${i} Raw Text End]\n\nProcess with Hybrid rules.`;
-                                    pageStatusSuffix = "，文字層讀取成功";
+                                    statusText = `正在處理第 ${i} 頁，共有 ${pdf.numPages} 頁，文字層讀取成功...`;
                                 } else {
                                     promptContent = `[Page ${i}]\nText layer is corrupt or invalid (Reason: ${quality.reason}). Visual Mode Only.`;
-                                    pageStatusSuffix = "，文字層讀取失敗 (轉為純視覺)";
+                                    statusText = `正在處理第 ${i} 頁，共有 ${pdf.numPages} 頁，文字層讀取失敗 (轉為純視覺)...`;
                                 }
                             } catch (e) { 
                                 promptContent = `Visual Only (Error)`; 
-                                pageStatusSuffix = "，文字層錯誤";
+                                statusText = `正在處理第 ${i} 頁，共有 ${pdf.numPages} 頁，文字層讀取失敗 (轉為純視覺)...`;
                             }
                         } else {
                             promptContent = `[Page ${i}]\nVisual Mode Only.`;
                         }
                         
-                        updateStatusBar(`正在處理第 ${i} / ${pdf.numPages} 頁${pageStatusSuffix}...`, "busy");
+                        updateStatusBar(statusText, "busy");
                         document.getElementById('visual-progress').innerText = `Page ${i} / ${pdf.numPages}`;
 
                         if (imgBase64) {
@@ -1994,9 +1996,6 @@
         function showTransientStatus(m, t='success') { updateStatusBar(m, t==='error'?'error':'ready'); setTimeout(()=>{ if(!document.getElementById('status-bar').classList.contains('busy')) showReadyStatus(); }, 3000); }
         
         function addMessage(role, content) {
-            const welcome = document.getElementById('dynamic-welcome-msg');
-            if(welcome) welcome.remove();
-
             const div = document.createElement('div'); div.className = `message ${role}`; 
             div.tabIndex = -1; 
             let headerHTML = "";
@@ -2022,7 +2021,6 @@
             document.getElementById('refresh-btn').style.display = c.canFetch ? 'block' : 'none';
             updateConfigStatusDisplay();
             showReadyStatus();
-            renderReaderWelcome(); // 更新讀取頁面模型資訊
         }
         
         function handleModelFilter() {
