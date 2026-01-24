@@ -699,6 +699,7 @@
                         <select id="provider-select" onchange="handleProviderChange(true)">
                             <option value="gemini">Google Gemini (推薦)</option>
                             <option value="openrouter">OpenRouter (推薦)</option>
+                            <option value="nvidia">NVIDIA NIM (高速/試用)</option>
                             <option value="openai">OpenAI</option>
                             <option value="groq">Groq</option>
                             <option value="mistral">Mistral AI</option>
@@ -1144,6 +1145,7 @@
         const PROVIDERS = {
             gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
+            nvidia: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "meta/llama-3.1-70b-instruct", canFetch: true, listUrl: "https://integrate.api.nvidia.com/v1/models", models: ["meta/llama-3.1-70b-instruct", "meta/llama-3.1-405b-instruct", "nvidia/nemotron-4-340b-instruct"] },
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
             mistral: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "mistral-large-latest", canFetch: true, listUrl: "https://api.mistral.ai/v1/models", models: ["mistral-large-latest"] },
             openai: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gpt-4o", canFetch: true, listUrl: "https://api.openai.com/v1/models", models: ["gpt-4o"] },
@@ -1278,7 +1280,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 if (!localStorage.getItem(PROMPT_VERSION_KEY)) {
-                    ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral'].forEach(p => localStorage.removeItem(`${p}_prompt`));
+                    ['gemini', 'openrouter', 'openai', 'groq', 'perplexity', 'mistral', 'nvidia'].forEach(p => localStorage.removeItem(`${p}_prompt`));
                     localStorage.setItem(PROMPT_VERSION_KEY, 'true');
                 }
                 const savedProvider = localStorage.getItem('provider');
@@ -1942,6 +1944,7 @@
                 } else if (p === 'mistral') url = "https://api.mistral.ai/v1/chat/completions";
                 else if (p === 'perplexity') url = "https://api.perplexity.ai/chat/completions";
                 else if (p === 'openai') url = "https://api.openai.com/v1/chat/completions";
+                else if (p === 'nvidia') url = "https://integrate.api.nvidia.com/v1/chat/completions";
                 else url = "https://api.groq.com/openai/v1/chat/completions";
 
                 let messages = [];
@@ -2081,6 +2084,7 @@
                 }
                 else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
                 else if(p==='datalab') return; 
+                else if(p==='nvidia') list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
                 
                 if(list && list.length > 0) { 
