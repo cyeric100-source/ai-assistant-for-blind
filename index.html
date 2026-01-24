@@ -2082,15 +2082,44 @@
                         priceOut: parseFloat(m.pricing.completion) * 1000000, context: m.context_length, description: m.description
                     })).sort((a,b) => a.priceIn - b.priceIn);
                 }
-                else if(p==='gemini') list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models.filter(m=>m.supportedGenerationMethods?.includes("generateContent")).map(m=>m.name.replace("models/",""));
+                else if(p==='gemini') {
+                    list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models
+                        .filter(m=>m.supportedGenerationMethods?.includes("generateContent"))
+                        .map(m=>m.name.replace("models/",""));
+                }
                 else if(p==='datalab') return; 
-                else if(p==='nvidia') list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
-                else list=(await(await fetch(PROVIDERS[p].listUrl, {headers:{'Authorization':`Bearer ${k}`}})).json()).data.map(m=>m.id);
+                else {
+                    // [安全性修正] 所有其他服務商 (NVIDIA, OpenAI, Mistral, Groq) 強制透過 Worker 代理
+                    // 這解決了 NVIDIA 等服務商不允許瀏覽器跨域存取 (CORS) 的問題
+                    const proxyResponse = await fetch(USER_WORKER_URL, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${k}`,
+                            'X-Target-Url': PROVIDERS[p].listUrl,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!proxyResponse.ok) {
+                        const errTxt = await proxyResponse.text();
+                        throw new Error(`Proxy Error (${proxyResponse.status}): ${errTxt}`);
+                    }
+                    
+                    const data = await proxyResponse.json();
+                    // 兼容 OpenAI 標準格式 { data: [...] }
+                    if (data.data && Array.isArray(data.data)) {
+                        list = data.data.map(m => m.id);
+                    } else {
+                        // 若格式不同，嘗試直接解析
+                        list = Array.isArray(data) ? data.map(m => m.id || m) : [];
+                        console.warn("Unknown model list format:", data);
+                    }
+                }
                 
                 if(list && list.length > 0) { 
                     localStorage.setItem(`${p}_model_list`, JSON.stringify(list)); allCurrentModels=list; 
                     handleModelFilter(); showTransientStatus(`獲取成功，找到 ${list.length} 個模型並已儲存`); 
-                } else { throw new Error("找不到可用模型"); }
+                } else { throw new Error("找不到可用模型或格式錯誤"); }
             } catch(e) { window.reportError("更新失敗", e); } finally { btn.innerText="更新"; btn.disabled=false; }
         }
 
