@@ -1852,7 +1852,6 @@
                 document.getElementById('user-input').value = ""; 
                 document.getElementById('user-input').style.height = 'auto';
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
-                document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
                 
@@ -2110,19 +2109,19 @@
             try {
                 let list=[];
                 if(p==='openrouter') {
-                    // [安全性修正] OpenRouter 同樣使用 Worker 代理以避免 CORS 問題，同時傳遞 API Key
-                    const r = await fetch(USER_WORKER_URL, {
+                    // [安全性修正] OpenRouter 官方支援 CORS，改為直連模式以避免 Cloudflare Worker 標頭問題
+                    const r = await fetch("https://openrouter.ai/api/v1/models/user", {
                         method: 'GET',
                         headers: {
                             'Authorization': `Bearer ${k}`,
-                            'X-Target-Url': "https://openrouter.ai/api/v1/models/user",
-                            'Content-Type': 'application/json'
+                            'HTTP-Referer': "https://cyeric100-source.github.io/", 
+                            'X-Title': "AI Assistant for blind"
                         }
                     });
                     
                     if (!r.ok) {
                          const errTxt = await r.text();
-                         throw new Error(`Proxy Error (${r.status}): ${errTxt}`);
+                         throw new Error(`OpenRouter Error (${r.status}): ${errTxt}`);
                     }
                     
                     const raw = await r.json();
