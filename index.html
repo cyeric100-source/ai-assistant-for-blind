@@ -711,10 +711,6 @@
                             <label>Chandra OCR API Key (Datalab 專用):</label>
                             <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
                         </div>
-                        <label class="check-btn" style="padding: 8px;">
-                            <input type="checkbox" id="privacy-filter" onchange="handleModelFilter()">
-                            <span style="font-size: 0.95rem;">🛡️ 只列出保障私隱的模型 (排除免費版)</span>
-                        </label>
                         <label>模型過濾 (Filter):</label>
                         <input type="text" id="model-filter-input" placeholder="輸入關鍵字篩選 (如: flash, gpt)..." oninput="handleModelFilter()">
                         <div style="display:flex; gap:10px; margin-bottom: 10px;">
@@ -2068,15 +2064,12 @@
         
         function handleModelFilter() {
             const f = document.getElementById('model-filter-input').value.toLowerCase();
-            const privacyOnly = document.getElementById('privacy-filter').checked;
             
             let filtered = allCurrentModels.filter(m => {
                 const isObj = typeof m === 'object';
                 const nameStr = isObj ? (m.name + m.id) : m;
                 const textMatch = nameStr.toLowerCase().includes(f);
-                let privacyMatch = true;
-                if (privacyOnly && isObj && 'priceIn' in m) { if (m.priceIn === 0 && m.priceOut === 0) privacyMatch = false; }
-                return textMatch && privacyMatch;
+                return textMatch;
             });
 
             if (filtered.length > 0 && typeof filtered[0] === 'object' && 'priceIn' in filtered[0]) {
@@ -2111,12 +2104,20 @@
         
         async function fetchOnlineModels() {
             const p = document.getElementById('provider-select').value; const k = document.getElementById('api-key').value;
-            if(!k && p!=='openrouter') return alert("需 API Key");
+            if(!k) return alert("需 API Key");
             const btn = document.getElementById('refresh-btn'); btn.innerText="讀取中..."; btn.disabled=true;
             try {
                 let list=[];
                 if(p==='openrouter') {
-                    const raw = await(await fetch("https://openrouter.ai/api/v1/models")).json();
+                    const r = await fetch("https://openrouter.ai/api/v1/models/user", {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${k}`
+                        }
+                    });
+                    if (!r.ok) throw new Error(`OpenRouter API Error: ${r.status}`);
+                    const raw = await r.json();
+
                     list = raw.data.map(m => ({
                         id: m.id, name: m.name, priceIn: parseFloat(m.pricing.prompt) * 1000000,
                         priceOut: parseFloat(m.pricing.completion) * 1000000, context: m.context_length, description: m.description
