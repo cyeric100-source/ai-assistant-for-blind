@@ -2110,7 +2110,8 @@
                 let list=[];
                 if(p==='openrouter') {
                     // [安全性修正] OpenRouter 官方支援 CORS，改為直連模式以避免 Cloudflare Worker 標頭問題
-                    const r = await fetch("https://openrouter.ai/api/v1/models/user", {
+                    // [修正] 改為使用標準的 /api/v1/models (獲取全部模型)，而非 /api/v1/models/user (獲取個人偏好模型)
+                    const r = await fetch("https://openrouter.ai/api/v1/models", {
                         method: 'GET',
                         headers: {
                             'Authorization': `Bearer ${k}`,
