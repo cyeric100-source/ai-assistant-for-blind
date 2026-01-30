@@ -1852,6 +1852,7 @@
                 document.getElementById('user-input').value = ""; 
                 document.getElementById('user-input').style.height = 'auto';
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
+                document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
                 
@@ -2109,19 +2110,31 @@
             try {
                 let list=[];
                 if(p==='openrouter') {
-                    const r = await fetch("https://openrouter.ai/api/v1/models/user", {
+                    // [安全性修正] OpenRouter 同樣使用 Worker 代理以避免 CORS 問題，同時傳遞 API Key
+                    const r = await fetch(USER_WORKER_URL, {
                         method: 'GET',
                         headers: {
-                            'Authorization': `Bearer ${k}`
+                            'Authorization': `Bearer ${k}`,
+                            'X-Target-Url': "https://openrouter.ai/api/v1/models/user",
+                            'Content-Type': 'application/json'
                         }
                     });
-                    if (!r.ok) throw new Error(`OpenRouter API Error: ${r.status}`);
+                    
+                    if (!r.ok) {
+                         const errTxt = await r.text();
+                         throw new Error(`Proxy Error (${r.status}): ${errTxt}`);
+                    }
+                    
                     const raw = await r.json();
-
-                    list = raw.data.map(m => ({
-                        id: m.id, name: m.name, priceIn: parseFloat(m.pricing.prompt) * 1000000,
-                        priceOut: parseFloat(m.pricing.completion) * 1000000, context: m.context_length, description: m.description
-                    })).sort((a,b) => a.priceIn - b.priceIn);
+                    
+                    if (raw.data && Array.isArray(raw.data)) {
+                        list = raw.data.map(m => ({
+                            id: m.id, name: m.name, priceIn: parseFloat(m.pricing.prompt) * 1000000,
+                            priceOut: parseFloat(m.pricing.completion) * 1000000, context: m.context_length, description: m.description
+                        })).sort((a,b) => a.priceIn - b.priceIn);
+                    } else {
+                        throw new Error("OpenRouter models format unexpected");
+                    }
                 }
                 else if(p==='gemini') {
                     list=(await(await fetch(PROVIDERS[p].listUrl.replace('{KEY}',k))).json()).models
