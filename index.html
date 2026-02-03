@@ -214,6 +214,20 @@
             outline-offset: 2px;
         }
         
+        /* API Key 多行輸入框樣式 */
+        textarea#api-key {
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+            min-height: 80px;
+            resize: vertical;
+            /* 嘗試隱藏內容以保護隱私 (Webkit 瀏覽器支援) */
+            -webkit-text-security: disc;
+        }
+        textarea#api-key:focus {
+             /* 聚焦時也不顯示明文，保持隱私，或是視需求移除這行 */
+        }
+        
         button.action-btn {
             width: 100%; padding: 14px; font-size: 1.1rem; font-weight: bold;
             border-radius: 8px; margin-bottom: 12px; cursor: pointer;
@@ -706,7 +720,9 @@
                             <option value="perplexity">Perplexity</option>
                         </select>
                         <label>API Key (主要服務商):</label>
-                        <input type="password" id="api-key" placeholder="在此貼上您的 API Key" autocomplete="off">
+                        <!-- 將原本的 input 改為 textarea，以支援多行輸入多個 Key -->
+                        <textarea id="api-key" placeholder="在此貼上 API Key (Gemini 可每行輸入一個進行輪替)..." autocomplete="off" rows="3"></textarea>
+                        
                         <div style="margin: 15px 0; border-top: 1px dashed #333; padding-top: 15px;">
                             <label>Chandra OCR API Key (Datalab 專用):</label>
                             <input type="password" id="datalab-key" placeholder="若使用 Chandra 模式需在此輸入 Key" autocomplete="off">
@@ -1878,7 +1894,33 @@
         }
 
         async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
-            const k = ovKey || (p === document.getElementById('provider-select').value ? document.getElementById('api-key').value : localStorage.getItem(`${p}_key`));
+            // 1. 獲取原始 Key 字串 (可能包含換行)
+            let rawKey = ovKey || (p === document.getElementById('provider-select').value ? document.getElementById('api-key').value : localStorage.getItem(`${p}_key`));
+            if (!rawKey) throw new Error("需 API Key");
+            
+            // 2. 決定實際使用的 Key
+            let activeKey = rawKey.trim();
+            let keyList = [];
+            let currentKeyIndex = 0;
+
+            if (p === 'gemini') {
+                // Gemini 模式：解析多行 Key
+                keyList = rawKey.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+                if (keyList.length > 1) {
+                    // 讀取上次儲存的 Index
+                    const savedIndex = parseInt(localStorage.getItem('gemini_key_index') || '0');
+                    // 確保 Index 在有效範圍內
+                    currentKeyIndex = (savedIndex >= 0 && savedIndex < keyList.length) ? savedIndex : 0;
+                    activeKey = keyList[currentKeyIndex];
+                } else {
+                    activeKey = keyList[0] || "";
+                }
+            } else {
+                // 其他服務商：取第一行非空內容
+                activeKey = activeKey.split('\n').map(k => k.trim()).filter(k => k)[0] || "";
+            }
+
+            const k = activeKey;
             
             let m = ovModel;
             if (!m) {
@@ -2005,17 +2047,48 @@
 
             headers['X-Target-Url'] = url; 
 
-            const r = await fetch(USER_WORKER_URL, {
-                method: 'POST',
-                headers: headers, 
-                body: JSON.stringify(bodyObj), 
-                signal: sig
-            });
+            // 包裹 fetch 以處理錯誤重試
+            try {
+                const r = await fetch(USER_WORKER_URL, {
+                    method: 'POST',
+                    headers: headers, 
+                    body: JSON.stringify(bodyObj), 
+                    signal: sig
+                });
 
-            if(!r.ok) throw new Error(await r.text());
-            const d = await r.json();
+                if(!r.ok) {
+                    // 偵測 Gemini 的配額耗盡錯誤 (429)
+                    if (r.status === 429 && p === 'gemini' && keyList.length > 1) {
+                         throw new Error("QUOTA_EXHAUSTED");
+                    }
+                    throw new Error(await r.text());
+                }
+                const d = await r.json();
+                
+                return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
             
-            return p === 'gemini' ? (d.candidates?.[0]?.content?.parts?.[0]?.text) : (d.choices?.[0]?.message?.content);
+            } catch (e) {
+                // 處理額度耗盡後的切換邏輯
+                if (e.message === "QUOTA_EXHAUSTED" || (e.message.includes("429") && p === 'gemini' && keyList.length > 1)) {
+                    const nextIndex = (currentKeyIndex + 1) % keyList.length;
+                    
+                    // 彈出確認視窗 (阻塞式，適合簡單操作)
+                    // 注意：此對話框會暫停程式執行，等待用戶回應
+                    const confirmSwitch = confirm(`⚠️ 檢測到 Gemini Key (${currentKeyIndex + 1}) 的額度可能用完。\n\n共有 ${keyList.length} 個 Key。\n是否改用 Key (${nextIndex + 1}) 並立即重試？`);
+                    
+                    if (confirmSwitch) {
+                        // 儲存新的索引
+                        localStorage.setItem('gemini_key_index', nextIndex);
+                        updateStatusBar(`正在切換至 Key ${nextIndex + 1} 並重試...`, 'busy');
+                        
+                        // 遞迴呼叫 callAI 進行重試，傳入原始的 rawKey (ovKey) 以保持上下文
+                        return callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, rawKey);
+                    } else {
+                        throw new Error("額度用盡 (使用者取消切換)");
+                    }
+                }
+                throw e; // 其他錯誤繼續拋出
+            }
         }
         
         function updateStatusBar(t, s='ready') { 
