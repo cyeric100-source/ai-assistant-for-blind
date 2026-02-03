@@ -1870,16 +1870,54 @@
                 document.getElementById('upload-btn').innerText = "📁 檔案/拍照"; 
                 document.getElementById('upload-btn').classList.remove('active');
                 selectedFile = null;
+
+                // --- 智慧網址分流邏輯 START ---
+                let passingImageUrls = [];
+                let processedText = input;
+
+                // 定義支援直接傳送圖片網址的服務商 (Vision API)
+                const visionProviders = ['openrouter', 'openai', 'groq', 'nvidia']; 
+
+                // 檢查是否包含網址
+                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                const imgExtRegex = /\.(jpeg|jpg|gif|png|webp)($|\?)/i;
+                const foundUrls = input.match(urlRegex) || [];
+
+                if (foundUrls.length > 0) {
+                    if (visionProviders.includes(activeChatProvider)) {
+                        // 針對支援 Image URL 的服務商：提取圖片網址
+                        const imgs = foundUrls.filter(u => imgExtRegex.test(u));
+                        if (imgs.length > 0) {
+                            passingImageUrls = imgs;
+                            // 從文字中移除這些網址，避免重複閱讀
+                            imgs.forEach(url => {
+                                processedText = processedText.replace(url, '').trim();
+                            });
+                            if (!processedText) processedText = "分析圖片"; // 若文字全被移除，補上預設文字
+                            
+                            // 提示用戶
+                            showTransientStatus(`已提取 ${imgs.length} 張圖片網址並發送`);
+                        }
+                        // 非圖片網址保留在文字中，讓 Web Search 處理
+                    } else {
+                        // 針對 Gemini / Perplexity / Mistral：
+                        // 策略：全部保留在文字中，依賴其 Search Grounding 或原生能力 (如 Gemini 看 YouTube)
+                        // 不做任何提取
+                    }
+                }
+                // --- 智慧網址分流邏輯 END ---
                 
                 const res = await callAI(
                     activeChatProvider, 
                     document.getElementById('system-prompt').value,
                     chatHistory, 
-                    input, 
+                    processedText, 
                     fileData, 
                     mime, 
                     ctl.signal,
-                    activeChatModel
+                    activeChatModel,
+                    null,
+                    passingImageUrls
                 );
 
                 const aiMsg = addMessage('assistant', UniversalTextNormalizer.normalize(res)); 
@@ -1893,7 +1931,7 @@
             } catch(e) { window.reportError("Submit Error", e); } finally { clearTimeout(tm); btn.disabled=false; }
         }
 
-        async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey) {
+        async function callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, ovKey, imageUrls = []) {
             // 1. 獲取原始 Key 字串 (可能包含換行)
             let rawKey = ovKey || (p === document.getElementById('provider-select').value ? document.getElementById('api-key').value : localStorage.getItem(`${p}_key`));
             if (!rawKey) throw new Error("需 API Key");
@@ -2030,17 +2068,35 @@
                 history.forEach(msg => {
                     messages.push({ role: msg.role, content: msg.content });
                 });
+                
                 let currentContent = [];
+                
+                // 1. 加入文字
+                if (txt) currentContent.push({ type: "text", text: txt });
+
+                // 2. 加入 Base64 檔案 (若有)
                 if (file) {
                     if (mime === 'application/pdf' && p !== 'gemini') {
                          currentContent.push({ type: "text", text: `[SYSTEM: User uploaded a PDF. If you cannot read it, ask them to use Reader Tool.]\n${txt}` });
                     } else {
-                        currentContent.push({ type: "text", text: txt });
                         currentContent.push({ type: "image_url", image_url: { url: `data:${mime};base64,${file}` } });
                     }
-                } else {
-                    currentContent = txt;
                 }
+
+                // 3. 加入提取出的圖片網址 (若有)
+                if (imageUrls && imageUrls.length > 0) {
+                    imageUrls.forEach(url => {
+                        currentContent.push({ type: "image_url", image_url: { url: url } });
+                    });
+                }
+
+                // 若內容只有純文字，則簡化為字串 (相容性考慮)
+                if (currentContent.length === 0) {
+                    currentContent = " ";
+                } else if (currentContent.length === 1 && currentContent[0].type === 'text') {
+                    currentContent = currentContent[0].text;
+                }
+
                 messages.push({ role: "user", content: currentContent });
                 bodyObj = { ...bodyObj, model: m, messages: messages, temperature: 0.3 };
             }
@@ -2082,7 +2138,7 @@
                         updateStatusBar(`正在切換至 Key ${nextIndex + 1} 並重試...`, 'busy');
                         
                         // 遞迴呼叫 callAI 進行重試，傳入原始的 rawKey (ovKey) 以保持上下文
-                        return callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, rawKey);
+                        return callAI(p, sysPrompt, history, txt, file, mime, sig, ovModel, rawKey, imageUrls);
                     } else {
                         throw new Error("額度用盡 (使用者取消切換)");
                     }
