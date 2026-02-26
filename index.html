@@ -1305,6 +1305,7 @@
                 const savedSpecifics = localStorage.getItem('specific_configs');
                 if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
 
+                // 初始化載入 OCR 與 翻譯 的指令到記憶體
                 memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
                 memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
 
@@ -1313,7 +1314,9 @@
                 
                 document.getElementById('datalab-key').value = localStorage.getItem('datalab_key') || "";
                 
+                // 這會自動處理一般對話指令的初始化
                 handleProviderChange(false); 
+                
                 initPasteImage(); initDragAndDrop(); initEnterKey(); initAutoGrow();
                 
                 const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
@@ -1332,11 +1335,37 @@
             } catch (e) { window.reportError("Init Error", e); }
         });
 
+        // 新增輔助函式：安全獲取 Prompt (防止空白)
+        function getSafePrompt(mode) {
+            if (memoryPrompts[mode]) return memoryPrompts[mode];
+            
+            if (mode === 'chat') {
+                const p = document.getElementById('provider-select').value;
+                return localStorage.getItem(`${p}_prompt`) || PROVIDERS[p].prompt;
+            } else if (mode === 'ocr') {
+                return localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
+            } else if (mode === 'translate') {
+                return localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
+            }
+            return "";
+        }
+
+        // 修正後的 switchPromptEditor：切換前儲存，切換後安全讀取
         function switchPromptEditor(mode) {
             const textarea = document.getElementById('system-prompt');
+            
+            // 1. 切換前，將當前編輯框的內容存入記憶體
             memoryPrompts[currentEditingMode] = textarea.value;
+            
+            // 2. 切換模式
             currentEditingMode = mode;
-            textarea.value = memoryPrompts[mode];
+            
+            // 3. 安全讀取新模式的內容 (防止 memoryPrompts 為空)
+            const content = getSafePrompt(mode);
+            memoryPrompts[mode] = content; // 同步回記憶體
+            textarea.value = content;
+            
+            // 4. 更新 UI 狀態
             document.getElementById('tab-chat').classList.toggle('secondary', mode !== 'chat');
             document.getElementById('tab-ocr').classList.toggle('secondary', mode !== 'ocr');
             document.getElementById('tab-translate').classList.toggle('secondary', mode !== 'translate');
@@ -2174,11 +2203,19 @@
             return div;
         }
         
+        // 修正後的 handleProviderChange：確保記憶體中的 Chat Prompt 始終被更新
         function handleProviderChange(save=true) {
             const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
             document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
-            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
-            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
+            
+            // 1. 強制更新記憶體中的 Chat Prompt (無論當前分頁為何)
+            const savedPrompt = localStorage.getItem(`${p}_prompt`);
+            memoryPrompts.chat = savedPrompt || c.prompt;
+            
+            // 2. 如果使用者正看著 Chat 分頁，即時更新 UI
+            if (currentEditingMode === 'chat') {
+                document.getElementById('system-prompt').value = memoryPrompts.chat;
+            }
             
             const orSet = document.getElementById('openrouter-settings');
             if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
@@ -2324,13 +2361,19 @@
         
         function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); updateConfigStatusDisplay(); }
         
+        // 修正後的 saveSettings：強制同步並保存所有分頁的指令
         function saveSettings() {
             const p = document.getElementById('provider-select').value;
             const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
+            
+            // 1. 強制將當前編輯框的內容同步到記憶體
             memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
+            
+            // 2. 將所有 Prompt 寫入 LocalStorage
             localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
+            
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
             localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
             localStorage.setItem(`${p}_model`, m); 
@@ -2349,6 +2392,8 @@
             localStorage.removeItem(`${p}_prompt`);
             localStorage.removeItem('custom_prompt_ocr');
             localStorage.removeItem('custom_prompt_translate');
+            
+            // 使用新邏輯：更新記憶體後，若當前正在編輯，也更新 UI
             document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
             handleProviderChange(true); 
             showTransientStatus("已還原預設值");
