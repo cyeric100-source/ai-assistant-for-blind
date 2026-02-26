@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視像助理第 1 測試版</title>
+    <title>AI 視像助理第 2 測試版 (2026 Fix)</title>
     
     <!-- 引入 Marked.js 解析 Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.umd.min.js"></script>
@@ -1154,8 +1154,9 @@
         const DEFAULT_TRANSLATE_PROMPT = `# Role Definition\nYou are a "Strict Archival Translator" (嚴格歸檔翻譯官) specializing in converting content into Traditional Chinese (Hong Kong).\n\n# The 3 Laws of Translation (MUST FOLLOW)\n1. **Zero Omission Policy (絕無遺漏)**:\n   - You must translate EVERY single sentence, phrase, list item, and caption.\n   - **STRICTLY PROHIBITED**: Do not use phrases like "Same as above", "...", "[Rest omitted]", or "Summary of the following".\n   - Even if the original text repeats itself 100 times, you must translate it 100 times.\n\n2. **No Summarization (絕不摘要)**:\n   - Your job is to convert language, not to compress information.\n   - Do not attempt to "improve" the text by making it concise. If the original is verbose, the translation must be verbose.\n\n3. **Output Continuity**:\n   - Translate faithfully without interruption.\n\n# Format & Language Standards\n- **Target Language**: Traditional Chinese (Hong Kong style / 繁體中文-香港).\n- **Formatting**: Preserve all original Markdown (headings #, bold **, lists -) exactly.\n- **Context Awareness**: Use the provided [Previous Translation] ONLY for maintaining consistency in terminology and names. Do NOT re-translate it.\n- **Handling Foreign Text**: If input is NOT Traditional Chinese, translate it. If it IS Traditional Chinese, output as is.\n\n# Workflow\n1. Read the [Current Text].\n2. Reference [Previous Translation] for context.\n3. Output the translation of [Current Text] ONLY.`;
         const PROMPT_VERSION_KEY = "prompt_ver_2025_release_v9_chunked";
 
+        // 更新 Gemini 模型列表，移除不穩定的 latest，加入 Lite 和 2.0 Flash
         const PROVIDERS = {
-            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-flash-latest", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
+            gemini: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "gemini-2.5-flash-lite", canFetch: true, listUrl: "https://generativelanguage.googleapis.com/v1beta/models?key={KEY}", models: ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-flash-latest"] },
             openrouter: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "qwen/qwen2.5-vl-72b-instruct", canFetch: true, listUrl: "https://openrouter.ai/api/v1/models", models: ["qwen/qwen2.5-vl-72b-instruct", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"] },
             nvidia: { prompt: DEFAULT_CHAT_PROMPT, defaultModel: "meta/llama-3.1-70b-instruct", canFetch: true, listUrl: "https://integrate.api.nvidia.com/v1/models", models: ["meta/llama-3.1-70b-instruct", "meta/llama-3.1-405b-instruct", "nvidia/nemotron-4-340b-instruct"] },
             datalab: { prompt: DEFAULT_OCR_PROMPT, defaultModel: "chandra", canFetch: false, listUrl: "", models: ["chandra"] },
@@ -1305,7 +1306,6 @@
                 const savedSpecifics = localStorage.getItem('specific_configs');
                 if (savedSpecifics) { specificConfigs = JSON.parse(savedSpecifics); }
 
-                // 初始化載入 OCR 與 翻譯 的指令到記憶體
                 memoryPrompts.ocr = localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
                 memoryPrompts.translate = localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
 
@@ -1314,9 +1314,7 @@
                 
                 document.getElementById('datalab-key').value = localStorage.getItem('datalab_key') || "";
                 
-                // 這會自動處理一般對話指令的初始化
                 handleProviderChange(false); 
-                
                 initPasteImage(); initDragAndDrop(); initEnterKey(); initAutoGrow();
                 
                 const chandraMode = document.querySelector('input[name="ocr-mode"]:checked');
@@ -1335,37 +1333,11 @@
             } catch (e) { window.reportError("Init Error", e); }
         });
 
-        // 新增輔助函式：安全獲取 Prompt (防止空白)
-        function getSafePrompt(mode) {
-            if (memoryPrompts[mode]) return memoryPrompts[mode];
-            
-            if (mode === 'chat') {
-                const p = document.getElementById('provider-select').value;
-                return localStorage.getItem(`${p}_prompt`) || PROVIDERS[p].prompt;
-            } else if (mode === 'ocr') {
-                return localStorage.getItem('custom_prompt_ocr') || DEFAULT_OCR_PROMPT;
-            } else if (mode === 'translate') {
-                return localStorage.getItem('custom_prompt_translate') || DEFAULT_TRANSLATE_PROMPT;
-            }
-            return "";
-        }
-
-        // 修正後的 switchPromptEditor：切換前儲存，切換後安全讀取
         function switchPromptEditor(mode) {
             const textarea = document.getElementById('system-prompt');
-            
-            // 1. 切換前，將當前編輯框的內容存入記憶體
             memoryPrompts[currentEditingMode] = textarea.value;
-            
-            // 2. 切換模式
             currentEditingMode = mode;
-            
-            // 3. 安全讀取新模式的內容 (防止 memoryPrompts 為空)
-            const content = getSafePrompt(mode);
-            memoryPrompts[mode] = content; // 同步回記憶體
-            textarea.value = content;
-            
-            // 4. 更新 UI 狀態
+            textarea.value = memoryPrompts[mode];
             document.getElementById('tab-chat').classList.toggle('secondary', mode !== 'chat');
             document.getElementById('tab-ocr').classList.toggle('secondary', mode !== 'ocr');
             document.getElementById('tab-translate').classList.toggle('secondary', mode !== 'translate');
@@ -1552,6 +1524,14 @@
                     for (let i = 1; i <= pdf.numPages; i++) {
                         if (currentSignal.aborted) break;
 
+                        // [Fix 429] 動態計算延遲：Gemini 需要更長的冷卻時間
+                        // 12秒是為了符合最新的 5 RPM 嚴格限制
+                        if (ocrProvider === 'gemini') {
+                             await sleep(12000); 
+                        } else {
+                             await sleep(500);
+                        }
+
                         const page = await pdf.getPage(i);
                         let promptContent = "";
                         let imgBase64 = null;
@@ -1616,12 +1596,12 @@
                                 // 第 2 頁及之後，不聚焦，靜默加入 DOM
 
                             } catch (e) {
-                                if (e.message !== '已取消') outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message}</p></div>`;
+                                // [Fix 429] 增加重試機制的錯誤顯示
+                                if (e.message !== '已取消') outputArea.innerHTML += `<div class="reader-page-block"><h3 style="color:red">Page ${i} Error</h3><p>${e.message} (請檢查 API 配額或嘗試更換為 gemini-2.5-flash-lite)</p></div>`;
                             }
                         }
                         
                         canvas.remove();
-                        if (ocrProvider === 'gemini') await sleep(6000); else await sleep(500);
                     }
 
                     if (!currentSignal.aborted) {
@@ -1711,6 +1691,9 @@
                     updateStatusBar("翻譯已取消", "ready");
                     return;
                 }
+                
+                // [Fix 429] 翻譯也需要延遲
+                if (transProvider === 'gemini') await sleep(6000);
 
                 updateStatusBar(`正在翻譯第 ${i + 1} / ${chunks.length} 部分...`, "busy");
                 
@@ -1730,8 +1713,7 @@
                     outputArea.appendChild(div);
 
                     previousTranslation = chunkRes;
-                    await sleep(500);
-
+                    
                     // 翻譯也是逐塊進行，第一塊可以先讀
                     if (i === 0) {
                         div.setAttribute('tabindex', '-1');
@@ -2203,19 +2185,11 @@
             return div;
         }
         
-        // 修正後的 handleProviderChange：確保記憶體中的 Chat Prompt 始終被更新
         function handleProviderChange(save=true) {
             const p = document.getElementById('provider-select').value; const c = PROVIDERS[p];
             document.getElementById('api-key').value = localStorage.getItem(`${p}_key`) || "";
-            
-            // 1. 強制更新記憶體中的 Chat Prompt (無論當前分頁為何)
-            const savedPrompt = localStorage.getItem(`${p}_prompt`);
-            memoryPrompts.chat = savedPrompt || c.prompt;
-            
-            // 2. 如果使用者正看著 Chat 分頁，即時更新 UI
-            if (currentEditingMode === 'chat') {
-                document.getElementById('system-prompt').value = memoryPrompts.chat;
-            }
+            memoryPrompts.chat = localStorage.getItem(`${p}_prompt`) || c.prompt;
+            if (currentEditingMode === 'chat') document.getElementById('system-prompt').value = memoryPrompts.chat;
             
             const orSet = document.getElementById('openrouter-settings');
             if(orSet) orSet.classList.toggle('hidden', p!=='openrouter');
@@ -2361,19 +2335,13 @@
         
         function handleCustomInputChange() { currentActiveModelId = document.getElementById('custom-model-input').value.trim(); updateConfigStatusDisplay(); }
         
-        // 修正後的 saveSettings：強制同步並保存所有分頁的指令
         function saveSettings() {
             const p = document.getElementById('provider-select').value;
             const m = document.getElementById('model-select').value==="CUSTOM" ? document.getElementById('custom-model-input').value : document.getElementById('model-select').value;
-            
-            // 1. 強制將當前編輯框的內容同步到記憶體
             memoryPrompts[currentEditingMode] = document.getElementById('system-prompt').value;
-            
-            // 2. 將所有 Prompt 寫入 LocalStorage
             localStorage.setItem(`${p}_prompt`, memoryPrompts.chat);
             localStorage.setItem('custom_prompt_ocr', memoryPrompts.ocr);
             localStorage.setItem('custom_prompt_translate', memoryPrompts.translate);
-            
             localStorage.setItem(`${p}_key`, document.getElementById('api-key').value.trim());
             localStorage.setItem('datalab_key', document.getElementById('datalab-key').value.trim());
             localStorage.setItem(`${p}_model`, m); 
@@ -2392,8 +2360,6 @@
             localStorage.removeItem(`${p}_prompt`);
             localStorage.removeItem('custom_prompt_ocr');
             localStorage.removeItem('custom_prompt_translate');
-            
-            // 使用新邏輯：更新記憶體後，若當前正在編輯，也更新 UI
             document.getElementById('system-prompt').value = memoryPrompts[currentEditingMode];
             handleProviderChange(true); 
             showTransientStatus("已還原預設值");
